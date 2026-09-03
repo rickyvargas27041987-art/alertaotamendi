@@ -13,36 +13,74 @@ const categories = [
 
 export default function Home() {
   const [selected, setSelected] = useState("");
+  const [description, setDescription] = useState("");
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function sendReport() {
+    if (!selected || !description.trim()) {
+      setMessage("⚠️ Escribí una descripción antes de enviar.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      setMessage("");
+
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category: selected,
+          description: description,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage("❌ No se pudo enviar la alerta.");
+        return;
+      }
+
+      setMessage(
+        `✅ Alerta enviada correctamente. Número de reporte: #${data.report.id}`
+      );
+
+      setDescription("");
+      setSelected("");
+    } catch {
+      setMessage("❌ Error de conexión con el sistema.");
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="mx-auto max-w-md px-5 pb-10">
 
-        {/* ENCABEZADO */}
         <header className="flex items-center justify-between py-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500 text-2xl shadow-lg shadow-red-500/20">
-                🚨
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500 text-2xl">
+              🚨
+            </div>
 
-              <div>
-                <h1 className="text-xl font-bold tracking-tight">
-                  ALERTA
-                </h1>
-                <p className="text-sm font-semibold text-red-400">
-                  OTAMENDI
-                </p>
-              </div>
+            <div>
+              <h1 className="text-xl font-bold">ALERTA</h1>
+              <p className="text-sm font-semibold text-red-400">
+                OTAMENDI
+              </p>
             </div>
           </div>
 
-          <button className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800 text-xl">
+          <button className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800">
             🔔
           </button>
         </header>
 
-        {/* SALUDO */}
         <section className="mb-7 mt-4">
           <p className="text-slate-400">Bienvenido</p>
 
@@ -56,16 +94,18 @@ export default function Home() {
           </p>
         </section>
 
-        {/* CATEGORÍAS */}
         <section>
           <div className="grid grid-cols-2 gap-3">
             {categories.map((category) => (
               <button
                 key={category.title}
-                onClick={() => setSelected(category.title)}
+                onClick={() => {
+                  setSelected(category.title);
+                  setMessage("");
+                }}
                 className={`rounded-3xl border p-5 text-left transition-all ${
                   selected === category.title
-                    ? "border-white bg-slate-700 scale-[0.98]"
+                    ? "scale-[0.98] border-white bg-slate-700"
                     : "border-slate-800 bg-slate-900 hover:bg-slate-800"
                 }`}
               >
@@ -83,7 +123,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* REPORTE RÁPIDO */}
         {selected && (
           <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-5">
             <p className="text-sm text-slate-400">
@@ -95,6 +134,8 @@ export default function Home() {
             </h3>
 
             <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Contanos qué estás observando..."
               className="mt-4 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
             />
@@ -109,13 +150,22 @@ export default function Home() {
               </button>
             </div>
 
-            <button className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-bold shadow-lg shadow-red-500/20 transition hover:bg-red-600">
-              🚨 ENVIAR ALERTA
+            <button
+              onClick={sendReport}
+              disabled={sending}
+              className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-bold transition hover:bg-red-600 disabled:opacity-50"
+            >
+              {sending ? "ENVIANDO..." : "🚨 ENVIAR ALERTA"}
             </button>
           </section>
         )}
 
-        {/* ACCESOS */}
+        {message && (
+          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">
+            {message}
+          </div>
+        )}
+
         <section className="mt-7 grid grid-cols-2 gap-3">
           <button className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold">
             🗺️ Ver mapa
@@ -126,7 +176,6 @@ export default function Home() {
           </button>
         </section>
 
-        {/* INFORMACIÓN */}
         <section className="mt-7 rounded-3xl bg-slate-900 p-5">
           <div className="flex gap-3">
             <div className="text-xl">ℹ️</div>
@@ -144,11 +193,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* PIE */}
         <footer className="py-8 text-center text-xs text-slate-600">
-          ALERТA OTAMENDI · Comunidad conectada
+          ALERTA OTAMENDI · Comunidad conectada
         </footer>
-
       </div>
     </main>
   );
