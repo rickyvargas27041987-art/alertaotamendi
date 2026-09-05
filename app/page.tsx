@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
+import { supabase } from "../lib/supabase"; 
 const categories = [
   { icon: "🚨", title: "Delito / Robo", color: "bg-red-500" },
   { icon: "👤", title: "Persona sospechosa", color: "bg-orange-500" },
@@ -16,48 +16,160 @@ export default function Home() {
   const [description, setDescription] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
+const [latitude, setLatitude] = useState<number | null>(null);
+const [longitude, setLongitude] = useState<number | null>(null);
+const [locationMessage, setLocationMessage] = useState("");
+const [photo, setPhoto] = useState<File | null>(null);
+const [video, setVideo] = useState<File | null>(null);
+const [audio, setAudio] = useState<File | null>(null);
+function getLocation() {
+  if (!navigator.geolocation) {
+    setLocationMessage("❌ Este dispositivo no permite geolocalización.");
+    return;
+  }
 
-  async function sendReport() {
-    if (!selected || !description.trim()) {
-      setMessage("⚠️ Escribí una descripción antes de enviar.");
-      return;
+  setLocationMessage("📍 Obteniendo ubicación...");
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      setLatitude(position.coords.latitude);
+      setLongitude(position.coords.longitude);
+      setLocationMessage("✅ Ubicación obtenida correctamente.");
+    },
+    () => {
+      setLocationMessage("❌ No se pudo obtener la ubicación.");
     }
+  );
+}
+ 
+async function sendReport() {
+  if (!selected || !description.trim()) {
+    setMessage("⚠️ Escribí una descripción antes de enviar.");
+    return;
+  }
 
-    try {
-      setSending(true);
-      setMessage("");
+  setSending(true);
+  setMessage("");
 
-      const response = await fetch("/api/reports", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          category: selected,
-          description: description,
-        }),
-      });
+  try {
+    let imageUrl: string | null = null;
+    let videoUrl: string | null = null;
+    let audioUrl: string | null = null;
 
-      const data = await response.json();
+    // SUBIR FOTO
+    if (photo) {
+      const fileExt = photo.name.split(".").pop();
+      const fileName = `fotos/${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
 
-      if (!response.ok) {
-        setMessage("❌ No se pudo enviar la alerta.");
+      const { error: uploadError } = await supabase.storage
+        .from("alertas")
+        .upload(fileName, photo);
+
+      if (uploadError) {
+        console.error("Error subiendo foto:", uploadError);
+        setMessage("❌ No se pudo subir la foto.");
         return;
       }
 
-      setMessage(
-        `✅ Alerta enviada correctamente. Número de reporte: #${data.report.id}`
-      );
+      const { data: publicUrlData } = supabase.storage
+        .from("alertas")
+        .getPublicUrl(fileName);
 
-      setDescription("");
-      setSelected("");
-    } catch {
-      setMessage("❌ Error de conexión con el sistema.");
-    } finally {
-      setSending(false);
+      imageUrl = publicUrlData.publicUrl;
     }
-  }
 
+    // SUBIR VIDEO
+    if (video) {
+      const fileExt = video.name.split(".").pop();
+      const fileName = `videos/${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("alertas")
+        .upload(fileName, video);
+
+      if (uploadError) {
+        console.error("Error subiendo video:", uploadError);
+        setMessage("❌ No se pudo subir el video.");
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("alertas")
+        .getPublicUrl(fileName);
+
+      videoUrl = publicUrlData.publicUrl;
+    }
+
+    // SUBIR AUDIO
+    if (audio) {
+      const fileExt = audio.name.split(".").pop();
+      const fileName = `audios/${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("alertas")
+        .upload(fileName, audio);
+
+      if (uploadError) {
+        console.error("Error subiendo audio:", uploadError);
+        setMessage("❌ No se pudo subir el audio.");
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("alertas")
+        .getPublicUrl(fileName);
+
+      audioUrl = publicUrlData.publicUrl;
+    }
+
+    const response = await fetch("/api/reports", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        category: selected,
+        description,
+        latitude,
+        longitude,
+        imageUrl,
+        videoUrl,
+        audioUrl,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setMessage("❌ No se pudo enviar la alerta.");
+      return;
+    }
+
+    setMessage(
+      `✅ Alerta enviada correctamente. Número de reporte: #${data.report?.id ?? ""}`
+    );
+
+    setDescription("");
+    setSelected("");
+    setPhoto(null);
+    setVideo(null);
+    setAudio(null);
+    setLatitude(null);
+    setLongitude(null);
+    setLocationMessage("");
+  } catch (error) {
+    console.error("Error enviando alerta:", error);
+    setMessage("❌ Error de conexión con el sistema.");
+  } finally {
+    setSending(false);
+  }
+}
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="mx-auto max-w-md px-5 pb-10">
@@ -90,7 +202,7 @@ export default function Home() {
 
           <p className="mt-2 text-sm leading-6 text-slate-400">
             Informá rápidamente una situación para ayudar a mantener
-            comunicada a nuestra comunidad.
+            comunicada a nuestra comunidad  
           </p>
         </section>
 
@@ -141,15 +253,74 @@ export default function Home() {
             />
 
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <button className="rounded-2xl bg-slate-800 py-3 text-sm font-semibold">
-                📷 Foto
-              </button>
 
-              <button className="rounded-2xl bg-slate-800 py-3 text-sm font-semibold">
-                📍 Ubicación
-              </button>
-            </div>
+  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+    📷 Foto
 
+    <input
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0] || null;
+        setPhoto(file);
+      }}
+    />
+  </label>
+  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+  🎥 Video
+
+  <input
+    type="file"
+    accept="video/*"
+    className="hidden"
+    onChange={(e) => {
+      const file = e.target.files?.[0] || null;
+      setVideo(file);
+    }}
+  />
+</label>
+<label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+  🎤 Audio
+
+  <input
+    type="file"
+    accept="audio/*"
+    className="hidden"
+    onChange={(e) => {
+      const file = e.target.files?.[0] || null;
+      setAudio(file);
+    }}
+  />
+</label>
+  <button
+    onClick={getLocation}
+    className="rounded-2xl bg-slate-800 py-3 text-sm font-semibold"
+  >
+    📍 Ubicación
+  </button>
+
+</div>
+{video && (
+  <p className="mt-2 text-center text-sm font-semibold text-green-400">
+    ✅ Video seleccionado: {video.name}
+  </p>
+)}
+{audio && (
+  <p className="mt-2 text-center text-sm font-semibold text-green-400">
+    ✅ Audio seleccionado: {audio.name}
+  </p>
+)}
+{photo && (
+  <p className="mt-2 text-center text-sm font-semibold text-green-400">
+    ✅ Foto seleccionada: {photo.name}
+  </p>
+)}
+            {locationMessage && (
+  <p className="mt-3 text-center text-sm font-semibold text-slate-300">
+    {locationMessage}
+  </p>
+)}
             <button
               onClick={sendReport}
               disabled={sending}
@@ -167,9 +338,14 @@ export default function Home() {
         )}
 
         <section className="mt-7 grid grid-cols-2 gap-3">
-          <button className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold">
-            🗺️ Ver mapa
-          </button>
+       <button
+  onClick={() => {
+    window.location.href = "/mapa";
+  }}
+  className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold"
+>
+  🗺️ Ver mapa
+</button>
 
           <button className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold">
             📋 Mis reportes

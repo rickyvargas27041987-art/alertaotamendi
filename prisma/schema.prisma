@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Report {
+  id          Int      @id @default(autoincrement())
+  category    String
+  description String
+  status      String   @default("pendiente")
+  latitude    Float?
+longitude   Float?
+imageUrl String?
+videoUrl    String?
+audioUrl    String?
+  createdAt   DateTime @default(now())
+}
