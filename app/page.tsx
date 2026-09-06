@@ -11,6 +11,29 @@ const categories = [
   { icon: "🆘", title: "Emergencia", color: "bg-emerald-500" },
 ];
 
+function calcularDistanciaKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) {
+  const R = 6371;
+
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
 export default function Home() {
   const [selected, setSelected] = useState("");
   const [description, setDescription] = useState("");
@@ -28,11 +51,79 @@ const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 const audioChunksRef = useRef<Blob[]>([]);
+
   useEffect(() => {
   const saved = localStorage.getItem("notificationsEnabled");
   setNotificationsEnabled(saved === "true");
 }, []);
 
+useEffect(() => {
+  if (notificationsEnabled && (latitude === null || longitude === null)) {
+    getLocation();
+  }
+}, [notificationsEnabled]);
+  useEffect(() => {
+  if (
+    !notificationsEnabled ||
+    latitude === null ||
+    longitude === null
+  ) {
+    return;
+  }
+
+  const channel = supabase
+    .channel("alertas-cercanas")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "Report",
+      },
+      (payload) => {
+        const reporte = payload.new as {
+          category?: string;
+          description?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+        };
+
+        if (
+          reporte.latitude == null ||
+          reporte.longitude == null
+        ) {
+          return;
+        }
+
+        const distancia = calcularDistanciaKm(
+          latitude,
+          longitude,
+          reporte.latitude,
+          reporte.longitude
+        );
+
+        if (distancia <= 25) {
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            new Notification("🚨 Alerta cercana", {
+              body: `${reporte.category ?? "Nueva alerta"} a ${distancia.toFixed(1)} km de tu ubicación`,
+            });
+          }
+
+          if ("vibrate" in navigator) {
+            navigator.vibrate([300, 150, 300]);
+          }
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [notificationsEnabled, latitude, longitude]);
 async function toggleNotifications() {
   if (notificationsEnabled) {
     getLocation();  
