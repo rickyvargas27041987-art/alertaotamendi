@@ -150,7 +150,16 @@ async function sendReport() {
       setMessage("❌ No se pudo enviar la alerta.");
       return;
     }
+if (data.report?.id) {
+  const savedReports = JSON.parse(
+    localStorage.getItem("mis_reportes") || "[]"
+  );
 
+  if (!savedReports.includes(data.report.id)) {
+    savedReports.push(data.report.id);
+    localStorage.setItem("mis_reportes", JSON.stringify(savedReports));
+  }
+} 
     setMessage(
       `✅ Alerta enviada correctamente. Número de reporte: #${data.report?.id ?? ""}`
     );
