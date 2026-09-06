@@ -100,7 +100,30 @@ async function sendReport() {
     setMessage("⚠️ Escribí una descripción antes de enviar.");
     return;
   }
+let reportLatitude = latitude;
+let reportLongitude = longitude;
 
+if (reportLatitude === null || reportLongitude === null) {
+  try {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
+    });
+
+    reportLatitude = position.coords.latitude;
+    reportLongitude = position.coords.longitude;
+
+    setLatitude(reportLatitude);
+    setLongitude(reportLongitude);
+  } catch (error) {
+    console.error("No se pudo obtener la ubicación:", error);
+    setMessage("❌ Necesitamos tu ubicación para enviar la alerta.");
+    return;
+  }
+}
   setSending(true);
   setMessage("");
 
@@ -189,8 +212,8 @@ async function sendReport() {
       body: JSON.stringify({
         category: selected,
         description,
-        latitude,
-        longitude,
+        latitude: reportLatitude,
+        longitude: reportLongitude,
         imageUrl,
         videoUrl,
         audioUrl,
