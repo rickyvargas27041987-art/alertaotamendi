@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase"; 
 const categories = [
   { icon: "🚨", title: "Delito / Robo", color: "bg-red-500" },
@@ -22,11 +22,41 @@ const [locationMessage, setLocationMessage] = useState("");
 const [photo, setPhoto] = useState<File | null>(null);
 const [video, setVideo] = useState<File | null>(null);
 const [audio, setAudio] = useState<File | null>(null);
+const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
 
   const [isRecording, setIsRecording] = useState(false);
 const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 const audioChunksRef = useRef<Blob[]>([]);
+  useEffect(() => {
+  const saved = localStorage.getItem("notificationsEnabled");
+  setNotificationsEnabled(saved === "true");
+}, []);
+
+async function toggleNotifications() {
+  if (notificationsEnabled) {
+    getLocation();  
+    
+    localStorage.setItem("notificationsEnabled", "false");
+    setNotificationsEnabled(false);
+    return;
+  }
+
+  if (!("Notification" in window)) {
+    alert("Este dispositivo no permite notificaciones.");
+    return;
+  }
+
+  const permission = await Notification.requestPermission();
+
+  if (permission !== "granted") {
+    alert("Necesitamos permiso para enviarte alertas cercanas.");
+    return;
+  }
+
+  localStorage.setItem("notificationsEnabled", "true");
+  setNotificationsEnabled(true);
+}
 function getLocation() {
   if (!navigator.geolocation) {
     setLocationMessage("❌ Este dispositivo no permite geolocalización.");
@@ -273,9 +303,14 @@ if (data.report?.id) {
             </div>
           </div>
 
-          <button className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800">
-            🔔
-          </button>
+        <button
+  onClick={toggleNotifications}
+  className={`flex h-11 w-11 items-center justify-center rounded-full ${
+    notificationsEnabled ? "bg-yellow-500" : "bg-slate-800"
+  }`}
+>
+  {notificationsEnabled ? "🔔" : "🔕"}
+</button>
         </header>
 
         <section className="mb-7 mt-4">
