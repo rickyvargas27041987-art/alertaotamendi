@@ -80,7 +80,14 @@ export default function AdminPage() {
 
     return () => clearInterval(interval);
   }, []);
+async function handleLogout() {
+  await fetch("/api/admin/logout", {
+    method: "POST",
+  });
 
+  window.location.href = "/admin/login";
+}
+  
   const total = reports.length;
 
   const pending = reports.filter(
@@ -143,6 +150,12 @@ export default function AdminPage() {
           >
             🔄 Actualizar
           </button>
+          <button
+  onClick={handleLogout}
+  className="ml-3 rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold hover:bg-red-700"
+>
+  🚪 Cerrar sesión
+</button>
         </header>
         <section className="mb-8">
   <h2 className="mb-4 text-xl font-bold">
