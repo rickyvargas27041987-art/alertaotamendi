@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "../lib/supabase"; 
 const categories = [
   { icon: "🚨", title: "Delito / Robo", color: "bg-red-500" },
@@ -22,6 +22,11 @@ const [locationMessage, setLocationMessage] = useState("");
 const [photo, setPhoto] = useState<File | null>(null);
 const [video, setVideo] = useState<File | null>(null);
 const [audio, setAudio] = useState<File | null>(null);
+
+
+  const [isRecording, setIsRecording] = useState(false);
+const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+const audioChunksRef = useRef<Blob[]>([]);
 function getLocation() {
   if (!navigator.geolocation) {
     setLocationMessage("❌ Este dispositivo no permite geolocalización.");
@@ -41,7 +46,55 @@ function getLocation() {
     }
   );
 }
- 
+ async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    const recorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = recorder;
+    audioChunksRef.current = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunksRef.current.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const mimeType = recorder.mimeType || "audio/webm";
+
+      const blob = new Blob(audioChunksRef.current, {
+        type: mimeType,
+      });
+
+      const file = new File(
+        [blob],
+        `audio-${Date.now()}.webm`,
+        { type: mimeType }
+      );
+
+      setAudio(file);
+      setIsRecording(false);
+
+      recorder.stream.getTracks().forEach((track) => track.stop());
+    };
+
+    recorder.start();
+    setIsRecording(true);
+  } catch (error) {
+    console.error("Error al acceder al micrófono:", error);
+    setMessage("❌ No se pudo acceder al micrófono.");
+    setIsRecording(false);
+  }
+}
+
+function stopRecording() {
+  const recorder = mediaRecorderRef.current;
+
+  if (recorder && recorder.state === "recording") {
+    recorder.stop();
+  }
+}
 async function sendReport() {
   if (!selected || !description.trim()) {
     setMessage("⚠️ Escribí una descripción antes de enviar.");
@@ -291,20 +344,26 @@ if (data.report?.id) {
     }}
   />
 </label>
-<label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-  🎤 Audio
-
-  <input
-    type="file"
-    accept="audio/*"
-    capture="user"
-    className="hidden"
-    onChange={(e) => {
-      const file = e.target.files?.[0] || null;
-      setAudio(file);
-    }}
-  />
-</label>
+<button
+  type="button"
+  onPointerDown={startRecording}
+  onPointerUp={stopRecording}
+  onPointerCancel={stopRecording}
+  onPointerLeave={() => {
+    if (isRecording) stopRecording();
+  }}
+  className={`rounded-2xl py-3 text-center text-sm font-semibold ${
+    isRecording
+      ? "bg-red-600 text-white"
+      : "bg-slate-800 text-white"
+  }`}
+>
+  {isRecording
+    ? "🔴 Grabando... soltá para terminar"
+    : audio
+    ? "🎤 Audio grabado ✓"
+    : "🎤 Mantené apretado para grabar"}
+</button>
   <button
     onClick={getLocation}
     className="rounded-2xl bg-slate-800 py-3 text-sm font-semibold"
