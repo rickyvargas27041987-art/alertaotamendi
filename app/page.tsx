@@ -111,7 +111,11 @@ useEffect(() => {
               body: `${reporte.category ?? "Nueva alerta"} a ${distancia.toFixed(1)} km de tu ubicación`,
             });
           }
-
+const sonido = new Audio("/alerta_beep.wav");
+sonido.volume = 1;
+sonido.play().catch((error) => {
+  console.log("El navegador bloqueó el sonido:", error);
+});
           if ("vibrate" in navigator) {
             navigator.vibrate([300, 150, 300]);
           }
