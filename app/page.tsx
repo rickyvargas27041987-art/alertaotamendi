@@ -283,6 +283,7 @@ if (data.report?.id) {
   <input
     type="file"
     accept="video/*"
+    capture="environment"
     className="hidden"
     onChange={(e) => {
       const file = e.target.files?.[0] || null;
