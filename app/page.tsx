@@ -517,13 +517,20 @@ if (data.report?.id) {
     ? "🎤 Audio grabado ✓"
     : "🎤 Mantené apretado para grabar"}
 </button>
-  <button
-    onClick={getLocation}
-    className="rounded-2xl bg-slate-800 py-3 text-sm font-semibold"
-  >
-    📍 Ubicación
-  </button>
+ <button
+  onClick={() => {
+    const opcion = window.confirm(
+      "🚨 EMERGENCIAS\n\nAceptar: llamar al 911\nCancelar: volver"
+    );
 
+    if (opcion) {
+      window.location.href = "tel:911";
+    }
+  }}
+  className="rounded-2xl bg-red-600 py-3 text-sm font-semibold text-white"
+>
+  ☎️ Emergencias
+</button>
 </div>
 {video && (
   <p className="mt-2 text-center text-sm font-semibold text-green-400">
