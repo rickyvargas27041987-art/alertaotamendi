@@ -11,6 +11,7 @@ type Report = {
   status: string;
   latitude: number | null;
   longitude: number | null;
+  createdAt: string;
 };
 
 function getMarkerIcon(category: string) {
@@ -153,7 +154,12 @@ const reportsConUbicacion = reports.filter(
     </div>
 
     <div style={{ marginTop: "6px" }}>
-      <strong>Estado:</strong> {report.status}
+      <strong>Estado:</strong> Alerta activa
+    </div>
+
+    <div style={{ marginTop: "6px" }}>
+        <strong>Fecha:</strong>{" "}
+          {new Date(report.createdAt).toLocaleString("es-AR")}
     </div>
 
     <div style={{ marginTop: "6px" }}>

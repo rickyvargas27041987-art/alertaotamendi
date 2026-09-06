@@ -15,6 +15,7 @@ type Report = {
   status: string;
   latitude: number | null;
   longitude: number | null;
+  createdAt: string;
 };
 
 export default function MapaPublicoPage() {

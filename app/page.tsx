@@ -345,11 +345,16 @@ async function sendReport() {
   className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold"
 >
   🗺️ Ver mapa
-</button>
+       </button>
 
-          <button className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold">
-            📋 Mis reportes
-          </button>
+<button
+    onClick={() => {
+    window.location.href = "/mis-reportes";
+  }}
+    className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold"
+>
+  📄 Mis reportes
+</button>
         </section>
 
         <section className="mt-7 rounded-3xl bg-slate-900 p-5">
