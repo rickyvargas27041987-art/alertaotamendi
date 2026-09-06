@@ -115,6 +115,49 @@ export default function MisReportesPage() {
                 <p className="mt-4 text-sm text-slate-300">
                   {report.description || "Sin descripción"}
                 </p>
+                <div className="mt-5 border-t border-slate-800 pt-4">
+  <p className="mb-3 text-xs font-semibold text-slate-400">
+    ESTADO DEL REPORTE
+  </p>
+
+  <div className="flex items-center gap-2 text-xs">
+    <div
+      className={`rounded-full px-3 py-2 ${
+        ["pendiente", "en_analisis", "verificada", "resuelta"].includes(
+          report.status
+        )
+          ? "bg-yellow-500/20 text-yellow-300"
+          : "bg-slate-800 text-slate-500"
+      }`}
+    >
+      ✓ Recibido
+    </div>
+
+    <span className="text-slate-600">→</span>
+
+    <div
+      className={`rounded-full px-3 py-2 ${
+        ["en_analisis", "verificada", "resuelta"].includes(report.status)
+          ? "bg-blue-500/20 text-blue-300"
+          : "bg-slate-800 text-slate-500"
+      }`}
+    >
+      🔎 En análisis
+    </div>
+
+    <span className="text-slate-600">→</span>
+
+    <div
+      className={`rounded-full px-3 py-2 ${
+        report.status === "resuelta"
+          ? "bg-green-500/20 text-green-300"
+          : "bg-slate-800 text-slate-500"
+      }`}
+    >
+      ✓ Resuelto
+    </div>
+  </div>
+</div>
 
                 {report.createdAt && (
                   <p className="mt-4 text-xs text-slate-500">
