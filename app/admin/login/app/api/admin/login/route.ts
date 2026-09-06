@@ -24,7 +24,11 @@ export async function POST(request: Request) {
       success: true,
     });
 
-    response.cookies.set("admin_session", adminPassword, {
+    response.cookies.set(
+  "admin_session",
+  process.env.ADMIN_SESSION_SECRET!,
+  {
+    });
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
