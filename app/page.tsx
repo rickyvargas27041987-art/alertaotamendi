@@ -46,6 +46,7 @@ const [photo, setPhoto] = useState<File | null>(null);
 const [video, setVideo] = useState<File | null>(null);
 const [audio, setAudio] = useState<File | null>(null);
 const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+const [emergencyMenuOpen, setEmergencyMenuOpen] = useState(false);
 
 
   const [isRecording, setIsRecording] = useState(false);
@@ -517,20 +518,57 @@ if (data.report?.id) {
     ? "🎤 Audio grabado ✓"
     : "🎤 Mantené apretado para grabar"}
 </button>
- <button
-  onClick={() => {
-    const opcion = window.confirm(
-      "🚨 EMERGENCIAS\n\nAceptar: llamar al 911\nCancelar: volver"
-    );
-
-    if (opcion) {
-      window.location.href = "tel:911";
-    }
-  }}
+<button
+  onClick={() => setEmergencyMenuOpen(!emergencyMenuOpen)}
   className="rounded-2xl bg-red-600 py-3 text-sm font-semibold text-white"
 >
   ☎️ Emergencias
-</button>
+</button> 
+             {emergencyMenuOpen && (
+  <div className="col-span-2 mt-2 rounded-2xl border border-red-500/30 bg-slate-900 p-4">
+    <h3 className="mb-3 text-center text-lg font-bold text-white">
+      🚨 Números de emergencia
+    </h3>
+
+    <div className="grid gap-2">
+      <a
+        href="tel:911"
+        className="rounded-xl bg-red-600 p-3 text-center font-semibold text-white"
+      >
+        🆘 Emergencias 911 — LLAMAR
+      </a>
+
+      <a
+        href="tel:101"
+        className="rounded-xl bg-blue-600 p-3 text-center font-semibold text-white"
+      >
+        🚓 Policía — LLAMAR
+      </a>
+
+      <a
+        href="tel:107"
+        className="rounded-xl bg-emerald-600 p-3 text-center font-semibold text-white"
+      >
+        🚑 Emergencia médica — LLAMAR
+      </a>
+
+      <a
+        href="tel:100"
+        className="rounded-xl bg-orange-600 p-3 text-center font-semibold text-white"
+      >
+        🚒 Bomberos — LLAMAR
+      </a>
+
+      <button
+        type="button"
+        onClick={() => setEmergencyMenuOpen(false)}
+        className="mt-1 rounded-xl bg-slate-700 p-3 font-semibold text-white"
+      >
+        ✕ Cerrar
+      </button>
+    </div>
+  </div>
+)} 
 </div>
 {video && (
   <p className="mt-2 text-center text-sm font-semibold text-green-400">
