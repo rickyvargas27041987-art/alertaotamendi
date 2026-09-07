@@ -26,6 +26,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   async function loadReports() {
     try {
       const response = await fetch("/api/reports");
@@ -222,14 +223,42 @@ async function handleLogout() {
             Cargando alertas...
           </div>
         )}
+<div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+  <div className="rounded-2xl border border-orange-500/20 bg-slate-900 p-4">
+    <p className="text-xs text-slate-400">Pendientes</p>
+    <p className="mt-1 text-2xl font-bold text-orange-300">
+      {reports.filter((r) => r.status === "pendiente").length}
+    </p>
+  </div>
 
-        <section className="space-y-4">
+  <div className="rounded-2xl border border-blue-500/20 bg-slate-900 p-4">
+    <p className="text-xs text-slate-400">En análisis</p>
+    <p className="mt-1 text-2xl font-bold text-blue-300">
+      {reports.filter((r) => r.status === "en_analisis").length}
+    </p>
+  </div>
+
+  <div className="rounded-2xl border border-violet-500/20 bg-slate-900 p-4">
+    <p className="text-xs text-slate-400">Verificadas</p>
+    <p className="mt-1 text-2xl font-bold text-violet-300">
+      {reports.filter((r) => r.status === "verificada").length}
+    </p>
+  </div>
+
+  <div className="rounded-2xl border border-emerald-500/20 bg-slate-900 p-4">
+    <p className="text-xs text-slate-400">Resueltas</p>
+    <p className="mt-1 text-2xl font-bold text-emerald-300">
+      {reports.filter((r) => r.status === "resuelta").length}
+    </p>
+  </div>
+</div>
+        <section className="space-y-4"> 
           {reports.map((report) => (
             <article
               key={report.id}
-              className="rounded-3xl border border-slate-800 bg-slate-900 p-5"
+              className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
             >
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-3">
 
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -246,23 +275,39 @@ async function handleLogout() {
                     {report.category}
                   </h3>
 
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    {report.description}
-                  </p>
+                 <p className="mt-2 truncate text-sm text-slate-300">
+                   {report.description}
+                       </p>
 
                   <p className="mt-3 text-xs text-slate-500">
                     {formatDate(report.createdAt)}
                   </p>
                 </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
+                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
+                      {report.imageUrl && <span>📷 Foto</span>}
+                      {report.videoUrl && <span>🎥 Video</span>}
+                      {report.audioUrl && <span>🎤 Audio</span>}
+                      {report.latitude !== null && report.longitude !== null && (
+                     <span>📍 Ubicación</span>
+                      )}
+                 </div>
+                <button
+  onClick={() =>
+    setOpenActionsId(openActionsId === report.id ? null : report.id)
+  }
+  className="rounded-xl bg-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-600"
+>
+  ⚙️ {openActionsId === report.id ? "Ocultar acciones" : "Acciones"}
+</button> 
+                {openActionsId === report.id && (
+  <div className="flex flex-wrap gap-2">
+                  <button 
                     onClick={() =>
                       changeStatus(report.id, "en_analisis")
                     }
                     disabled={updatingId === report.id}
                     className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-                  >
+                  >   
                     🔎 En análisis
                   </button>
 
@@ -308,10 +353,11 @@ async function handleLogout() {
                   <button
                    onClick={() => setSelectedReport(report)}
                    className="rounded-xl bg-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-500"
->
-  👁 Ver detalle
-</button>
+                   > 
+                  👁 Ver detalle
+                     </button>
                 </div>
+              )}
 
               </div>
             </article>
