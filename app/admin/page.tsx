@@ -100,7 +100,7 @@ const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
     }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+ }, [ultimaAlertaId]); 
 async function handleLogout() {
   await fetch("/api/admin/logout", {
     method: "POST",
