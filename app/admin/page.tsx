@@ -101,6 +101,60 @@ const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
 
     return () => clearInterval(interval);
  }, [ultimaAlertaId]); 
+  useEffect(() => {
+  if (!alertaNueva) return;
+
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as typeof window & {
+      webkitAudioContext?: typeof AudioContext;
+    }).webkitAudioContext;
+
+  if (!AudioContextClass) return;
+
+  const audioContext = new AudioContextClass();
+
+  const sonar = (
+    frecuencia: number,
+    inicio: number,
+    duracion: number
+  ) => {
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+
+    oscillator.frequency.value = frecuencia;
+    oscillator.type = "sine";
+
+    gain.gain.setValueAtTime(0.18, audioContext.currentTime + inicio);
+    gain.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioContext.currentTime + inicio + duracion
+    );
+
+    oscillator.start(audioContext.currentTime + inicio);
+    oscillator.stop(audioContext.currentTime + inicio + duracion);
+  };
+
+  const critica =
+    alertaNueva.category === "Emergencia" ||
+    alertaNueva.category === "Delito / Robo";
+
+  if (critica) {
+    sonar(880, 0, 0.25);
+    sonar(880, 0.35, 0.25);
+    sonar(1100, 0.7, 0.4);
+  } else {
+    sonar(700, 0, 0.25);
+    sonar(900, 0.3, 0.3);
+  }
+
+  return () => {
+    audioContext.close();
+  };
+}, [alertaNueva]); 
 async function handleLogout() {
   await fetch("/api/admin/logout", {
     method: "POST",
