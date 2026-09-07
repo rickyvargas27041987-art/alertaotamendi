@@ -177,7 +177,15 @@ function getLocation() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    const recorder = new MediaRecorder(stream);
+    const preferredMimeType = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+].find((type) => MediaRecorder.isTypeSupported(type));
+
+const recorder = preferredMimeType
+  ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+  : new MediaRecorder(stream);
     mediaRecorderRef.current = recorder;
     audioChunksRef.current = [];
 
@@ -188,17 +196,24 @@ function getLocation() {
     };
 
     recorder.onstop = () => {
-      const mimeType = recorder.mimeType || "audio/webm";
+      const mimeType =
+  recorder.mimeType ||
+  preferredMimeType ||
+  "audio/webm";
 
-      const blob = new Blob(audioChunksRef.current, {
-        type: mimeType,
-      });
+const extension = mimeType.includes("mp4")
+  ? "mp4"
+  : "webm";
 
-      const file = new File(
-        [blob],
-        `audio-${Date.now()}.webm`,
-        { type: mimeType }
-      );
+const blob = new Blob(audioChunksRef.current, {
+  type: mimeType,
+});
+
+const file = new File(
+  [blob],
+  `audio-${Date.now()}.${extension}`,
+  { type: mimeType }
+);
 
       setAudio(file);
       setIsRecording(false);
@@ -316,7 +331,10 @@ if (reportLatitude === null || reportLongitude === null) {
 
       const { error: uploadError } = await supabase.storage
         .from("alertas")
-        .upload(fileName, audio);
+        .upload(fileName, audio, {
+  contentType: audio.type || "audio/webm",
+  upsert: false,
+});
 
       if (uploadError) {
         console.error("Error subiendo audio:", uploadError);
