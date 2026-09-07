@@ -14,7 +14,7 @@ type Report = {
   createdAt: string;
 };
 
-function getMarkerIcon(category: string) {
+function getMarkerIcon(category: string, isNew: boolean) {
   const config: Record<string, { color: string; emoji: string }> = {
     "Delito / Robo": { color: "#ef4444", emoji: "🚨" },
     "Persona sospechosa": { color: "#f97316", emoji: "👤" },
@@ -31,28 +31,73 @@ function getMarkerIcon(category: string) {
 
   return L.divIcon({
     className: "",
-    html: `
+   html: `
+  <style>
+    @keyframes alertaPulse {
+      0% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      70% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+  </style>
+
+  <div style="
+    position:relative;
+    width:44px;
+    height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  ">
+
+    ${
+      isNew
+        ? `
       <div style="
+        position:absolute;
+        width:44px;
+        height:44px;
+        border-radius:50%;
         background:${item.color};
-        width:36px;
-        height:36px;
-        border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);
-        border:3px solid white;
-        box-shadow:0 2px 6px rgba(0,0,0,0.4);
-        display:flex;
-        align-items:center;
-        justify-content:center;
-      ">
-        <span style="
-          transform:rotate(45deg);
-          font-size:17px;
-        ">${item.emoji}</span>
-      </div>
-    `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 36],
-    popupAnchor: [0, -38],
+        opacity:0.35;
+        animation:alertaPulse 1.4s infinite;
+      "></div>
+    `
+        : ""
+    }
+
+    <div style="
+      position:relative;
+      background:${item.color};
+      width:36px;
+      height:36px;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border:3px solid white;
+      box-shadow:0 2px 6px rgba(0,0,0,0.4);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:2;
+    "> 
+      <span style="
+        transform:rotate(45deg);
+        font-size:17px;
+      ">${item.emoji}</span>
+    </div>
+  </div>
+`,
+  iconSize: [44, 44],
+iconAnchor: [22, 44],
+popupAnchor: [0, -44], 
   });
 }
 
@@ -136,8 +181,12 @@ const reportsConUbicacion = reports.filter(
           <Marker
             key={report.id}
             position={[report.latitude!, report.longitude!]}
-            icon={getMarkerIcon(report.category)}
-          >
+           icon={getMarkerIcon(
+  report.category,
+  Date.now() >= new Date(report.createdAt).getTime() &&
+    Date.now() - new Date(report.createdAt).getTime() <= 10 * 60 * 1000
+)} 
+          > 
            <Popup>
   <div style={{ minWidth: "200px" }}>
     <strong>🚨 {report.category}</strong>
