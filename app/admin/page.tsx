@@ -220,11 +220,40 @@ const mapReports = reports.filter((report) => {
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {alertaNueva && (
-  <div className="fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border border-red-500 bg-red-950 p-4 shadow-2xl">
+  <div
+  className={`fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border p-4 shadow-2xl ${
+    alertaNueva.category === "Emergencia" ||
+    alertaNueva.category === "Delito / Robo"
+      ? "border-red-500 bg-red-950"
+      : alertaNueva.category === "Accidente" ||
+        alertaNueva.category === "Incendio"
+      ? "border-orange-500 bg-orange-950"
+      : "border-yellow-500 bg-yellow-950"
+  }`}
+> 
     <div className="flex items-start justify-between gap-4">
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-red-300">
           🚨 Nueva alerta
+          <span
+  className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold text-white ${
+    alertaNueva.category === "Emergencia" ||
+    alertaNueva.category === "Delito / Robo"
+      ? "bg-red-600"
+      : alertaNueva.category === "Accidente" ||
+        alertaNueva.category === "Incendio"
+      ? "bg-orange-500"
+      : "bg-yellow-500 text-black"
+  }`}
+> 
+  {alertaNueva.category === "Emergencia" ||
+  alertaNueva.category === "Delito / Robo"
+    ? "🔴 PRIORIDAD CRÍTICA"
+    : alertaNueva.category === "Accidente" ||
+      alertaNueva.category === "Incendio"
+    ? "🟠 PRIORIDAD ALTA"
+    : "🟡 PRIORIDAD NORMAL"}
+</span> 
         </p>
 
         <h2 className="mt-1 text-xl font-bold text-white">
