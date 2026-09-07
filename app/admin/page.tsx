@@ -251,7 +251,62 @@ async function handleLogout() {
       {reports.filter((r) => r.status === "resuelta").length}
     </p>
   </div>
-</div>
+</div>  
+        <section className="mb-6 rounded-3xl border border-red-500/20 bg-slate-900 p-4">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-lg font-bold">🚨 Alertas destacadas</h2>
+    <span className="text-xs text-slate-400">Últimas 3</span>
+  </div>
+
+  <div className="space-y-2">
+    {[...reports]
+  .sort((a, b) => {
+    const prioridad = {
+      pendiente: 1,
+      en_analisis: 2,
+      verificada: 3,
+      resuelta: 4,
+      descartada: 5,
+    };
+
+    const pa = prioridad[a.status as keyof typeof prioridad] ?? 99;
+    const pb = prioridad[b.status as keyof typeof prioridad] ?? 99;
+
+    if (pa !== pb) return pa - pb;
+
+    return (
+      new Date(b.createdAt).getTime() -
+      new Date(a.createdAt).getTime()
+    );
+  })
+  .slice(0, 3)
+  .map((report) => (
+      <button
+        key={`destacada-${report.id}`}
+        onClick={() => setSelectedReport(report)}
+        className="flex w-full items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left hover:bg-slate-800"
+      >
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">#{report.id}</span>
+            <span className="font-semibold">{report.category}</span>
+          </div>
+
+          <p className="mt-1 text-xs text-slate-400">
+            {formatDate(report.createdAt)}
+          </p>
+        </div>
+
+        <div className="text-right">
+          <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs">
+            {statusLabel(report.status)}
+          </span>
+          <p className="mt-2 text-xs text-slate-500">Ver detalle ›</p>
+        </div>
+      </button>
+    ))}
+  </div>
+</section>
         <section className="space-y-4"> 
           {reports.map((report) => (
             <article
