@@ -27,6 +27,7 @@ export default function AdminPage() {
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
+  const [showAllReports, setShowAllReports] = useState(false);
   async function loadReports() {
     try {
       const response = await fetch("/api/reports");
@@ -307,7 +308,16 @@ async function handleLogout() {
     ))}
   </div>
 </section>
-        <section className="space-y-4"> 
+        <button
+  onClick={() => setShowAllReports(!showAllReports)}
+  className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold hover:bg-slate-800"
+>
+  📋 {showAllReports
+    ? "Ocultar todas las alertas"
+    : `Ver todas las alertas (${reports.length})`}
+</button> 
+       {showAllReports && (
+  <section className="space-y-4">
           {reports.map((report) => (
             <article
               key={report.id}
@@ -418,6 +428,7 @@ async function handleLogout() {
             </article>
           ))}
         </section>
+       )}
 {selectedReport && (
   <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
     <div className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
