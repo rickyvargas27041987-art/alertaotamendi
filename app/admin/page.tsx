@@ -28,6 +28,7 @@ export default function AdminPage() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [showAllReports, setShowAllReports] = useState(false);
+  const [mapPeriod, setMapPeriod] = useState("24h");
   async function loadReports() {
     try {
       const response = await fetch("/api/reports");
@@ -122,9 +123,28 @@ async function handleLogout() {
         return "DESCARTADA";
       default:
         return status.toUpperCase();
-    }
+    } 
+  }
+const mapReports = reports.filter((report) => {
+  if (report.latitude === null || report.longitude === null) {
+    return false;
   }
 
+  if (mapPeriod === "todas") {
+    return true;
+  }
+
+  const ahora = Date.now();
+  const fechaReporte = new Date(report.createdAt).getTime();
+  const diferenciaHoras = (ahora - fechaReporte) / (1000 * 60 * 60);
+
+  if (mapPeriod === "12h") return diferenciaHoras <= 12;
+  if (mapPeriod === "24h") return diferenciaHoras <= 24;
+  if (mapPeriod === "mes") return diferenciaHoras <= 24 * 30;
+  if (mapPeriod === "anio") return diferenciaHoras <= 24 * 365;
+
+  return true;
+}); 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="mx-auto max-w-7xl px-5 py-8">
@@ -163,8 +183,30 @@ async function handleLogout() {
   <h2 className="mb-4 text-xl font-bold">
     🗺️ Mapa de alertas
   </h2>
+         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+  <div>
+    <p className="text-sm font-semibold text-white">
+      🕒 Período del mapa
+    </p>
+    <p className="text-xs text-slate-400">
+      Seleccioná qué alertas mostrar
+    </p>
+  </div>
 
-  <MapaAlertas reports={reports} />
+  <select
+    value={mapPeriod}
+    onChange={(e) => setMapPeriod(e.target.value)}
+    className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+  >
+    <option value="12h">Últimas 12 horas</option>
+    <option value="24h">Últimas 24 horas</option>
+    <option value="mes">Último mes</option>
+    <option value="anio">Último año</option>
+    <option value="todas">Todas las alertas</option>
+  </select>
+</div> 
+
+ <MapaAlertas reports={mapReports} />
 </section>
 
         <section className="mb-8 grid gap-4 md:grid-cols-4">
@@ -275,7 +317,7 @@ async function handleLogout() {
 
     if (pa !== pb) return pa - pb;
 
-    return (
+    return (  
       new Date(b.createdAt).getTime() -
       new Date(a.createdAt).getTime()
     );
