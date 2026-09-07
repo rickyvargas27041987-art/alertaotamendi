@@ -52,6 +52,7 @@ const [emergencyMenuOpen, setEmergencyMenuOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 const audioChunksRef = useRef<Blob[]>([]);
+  const reportFormRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
   const saved = localStorage.getItem("notificationsEnabled");
@@ -427,10 +428,18 @@ if (data.report?.id) {
             {categories.map((category) => (
               <button
                 key={category.title}
-                onClick={() => {
-                  setSelected(category.title);
-                  setMessage("");
-                }}
+              onClick={() => {
+  setSelected(category.title);
+  setMessage("");
+
+  setTimeout(() => {
+    reportFormRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, 100);
+}}
+                }} 
                 className={`rounded-3xl border p-5 text-left transition-all ${
                   selected === category.title
                     ? "scale-[0.98] border-white bg-slate-700"
@@ -452,7 +461,10 @@ if (data.report?.id) {
         </section>
 
         {selected && (
-          <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-5">
+       <section
+            ref={reportFormRef}
+            className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-5"
+               >
             <p className="text-sm text-slate-400">
               Categoría seleccionada
             </p>
