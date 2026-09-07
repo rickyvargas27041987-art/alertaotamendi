@@ -311,12 +311,25 @@ const mapReports = reports.filter((report) => {
       resuelta: 4,
       descartada: 5,
     };
-
+const prioridadCategoria = {
+  Emergencia: 1,
+  "Delito / Robo": 2,
+  Accidente: 3,
+  Incendio: 4,
+  "Vehículo sospechoso": 5,
+  "Persona sospechosa": 6,
+}; 
     const pa = prioridad[a.status as keyof typeof prioridad] ?? 99;
     const pb = prioridad[b.status as keyof typeof prioridad] ?? 99;
 
     if (pa !== pb) return pa - pb;
+const ca =
+  prioridadCategoria[a.category as keyof typeof prioridadCategoria] ?? 99;
 
+const cb =
+  prioridadCategoria[b.category as keyof typeof prioridadCategoria] ?? 99;
+
+if (ca !== cb) return ca - cb; 
     return (  
       new Date(b.createdAt).getTime() -
       new Date(a.createdAt).getTime()
