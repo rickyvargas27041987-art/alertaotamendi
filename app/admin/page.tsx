@@ -176,7 +176,29 @@ async function handleLogout() {
   const resolved = reports.filter(
     (report) => report.status === "resuelta"
   ).length;
+const criticalAlerts = reports.filter(
+  (report) =>
+    report.status !== "resuelta" &&
+    report.status !== "descartada" &&
+    (report.category === "Emergencia" ||
+      report.category === "Delito / Robo")
+).length;
 
+const highAlerts = reports.filter(
+  (report) =>
+    report.status !== "resuelta" &&
+    report.status !== "descartada" &&
+    (report.category === "Accidente" ||
+      report.category === "Incendio")
+).length;
+
+const normalAlerts = reports.filter(
+  (report) =>
+    report.status !== "resuelta" &&
+    report.status !== "descartada" &&
+    (report.category === "Vehículo sospechoso" ||
+      report.category === "Persona sospechosa")
+).length;
   function formatDate(date: string) {
     return new Date(date).toLocaleString("es-AR");
   }
@@ -285,7 +307,34 @@ const mapReports = reports.filter((report) => {
   </div>
 )} 
       <div className="mx-auto max-w-7xl px-5 py-8">
+<div className="mb-6 grid gap-3 md:grid-cols-3">
+  <div className="rounded-2xl border border-red-500/30 bg-red-950/40 p-4">
+    <p className="text-xs font-bold uppercase tracking-wide text-red-300">
+      🔴 Críticas
+    </p>
+    <p className="mt-1 text-3xl font-bold text-white">
+      {criticalAlerts}
+    </p>
+  </div>
 
+  <div className="rounded-2xl border border-orange-500/30 bg-orange-950/40 p-4">
+    <p className="text-xs font-bold uppercase tracking-wide text-orange-300">
+      🟠 Altas
+    </p>
+    <p className="mt-1 text-3xl font-bold text-white">
+      {highAlerts}
+    </p>
+  </div>
+
+  <div className="rounded-2xl border border-yellow-500/30 bg-yellow-950/40 p-4">
+    <p className="text-xs font-bold uppercase tracking-wide text-yellow-300">
+      🟡 Normales
+    </p>
+    <p className="mt-1 text-3xl font-bold text-white">
+      {normalAlerts}
+    </p>
+  </div>
+</div> 
         <header className="mb-8 flex flex-col gap-4 border-b border-slate-800 pb-6 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500 text-2xl">
@@ -471,7 +520,7 @@ if (ca !== cb) return ca - cb;
       new Date(b.createdAt).getTime() -
       new Date(a.createdAt).getTime()
     );
-  })
+  }) 
   .slice(0, 3)
   .map((report) => (
       <button
