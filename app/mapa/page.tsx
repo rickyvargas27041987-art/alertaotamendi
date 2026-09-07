@@ -59,7 +59,6 @@ const activas = data.reports.filter((report: Report) => {
 
   return true;
 });
-);
       setReports(activas);
     } catch (error) {
       console.error("Error cargando mapa:", error);
