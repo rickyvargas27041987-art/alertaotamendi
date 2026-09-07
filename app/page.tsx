@@ -439,13 +439,12 @@ if (data.report?.id) {
     });
   }, 100);
 }}
-                }} 
-                className={`rounded-3xl border p-5 text-left transition-all ${
-                  selected === category.title
-                    ? "scale-[0.98] border-white bg-slate-700"
-                    : "border-slate-800 bg-slate-900 hover:bg-slate-800"
+      className={`rounded-3xl border p-5 text-left transition-all ${
+            selected === category.title
+             ? "scale-[0.98] border-white bg-slate-700"
+                 : "border-slate-800 bg-slate-900 hover:bg-slate-800"
                 }`}
-              >
+              > 
                 <div
                   className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${category.color} text-2xl`}
                 >
