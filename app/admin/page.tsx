@@ -241,12 +241,12 @@ const mapReports = reports.filter((report) => {
 }); 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      {alertaNueva && (
+      {alertaNueva && ( 
   <div
   className={`fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border p-4 shadow-2xl ${
     alertaNueva.category === "Emergencia" ||
     alertaNueva.category === "Delito / Robo"
-      ? "border-red-500 bg-red-950"
+      ? "border-red-500 bg-red-950 animate-pulse"
       : alertaNueva.category === "Accidente" ||
         alertaNueva.category === "Incendio"
       ? "border-orange-500 bg-orange-950"
