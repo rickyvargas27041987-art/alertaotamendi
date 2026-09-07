@@ -31,8 +31,9 @@ export default function AdminPage() {
   const [mapPeriod, setMapPeriod] = useState("24h");
   const [ultimaAlertaId, setUltimaAlertaId] = useState<number | null>(null);
 const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
+  const [alertaCriticaRevisada, setAlertaCriticaRevisada] = useState(false);
   async function loadReports() {
-    try {
+    try { 
       const response = await fetch("/api/reports");
       const data = await response.json();
 
@@ -46,9 +47,16 @@ const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
         new Date(a.createdAt).getTime()
     )[0];
 
-    if (ultimaAlertaId !== null && masReciente.id !== ultimaAlertaId) {
-      setAlertaNueva(masReciente);
-    }
+ if (ultimaAlertaId !== null && masReciente.id !== ultimaAlertaId) {
+  setAlertaNueva(masReciente);
+
+  if (
+    masReciente.category === "Emergencia" ||
+    masReciente.category === "Delito / Robo"
+  ) {
+    setAlertaCriticaRevisada(false);
+  }
+}
 
     setUltimaAlertaId(masReciente.id);
   }
@@ -296,10 +304,18 @@ const mapReports = reports.filter((report) => {
     </div>
 
     <button
-      onClick={() => {
-        setSelectedReport(alertaNueva);
-        setAlertaNueva(null);
-      }}
+     onClick={() => {
+  setSelectedReport(alertaNueva);
+
+  if (
+    alertaNueva.category === "Emergencia" ||
+    alertaNueva.category === "Delito / Robo"
+  ) {
+    setAlertaCriticaRevisada(true);
+  }
+
+  setAlertaNueva(null);
+}} 
       className="mt-3 w-full rounded-xl bg-red-600 px-4 py-3 font-bold text-white hover:bg-red-500"
     >
       👁 Ver alerta
@@ -315,6 +331,11 @@ const mapReports = reports.filter((report) => {
     <p className="mt-1 text-3xl font-bold text-white">
       {criticalAlerts}
     </p>
+    {!alertaCriticaRevisada && criticalAlerts > 0 && (
+  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white animate-pulse">
+    🔴 SIN REVISAR
+  </div>
+)}
   </div>
 
   <div className="rounded-2xl border border-orange-500/30 bg-orange-950/40 p-4">
