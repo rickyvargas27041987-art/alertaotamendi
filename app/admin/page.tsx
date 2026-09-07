@@ -29,14 +29,32 @@ export default function AdminPage() {
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [showAllReports, setShowAllReports] = useState(false);
   const [mapPeriod, setMapPeriod] = useState("24h");
+  const [ultimaAlertaId, setUltimaAlertaId] = useState<number | null>(null);
+const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
   async function loadReports() {
     try {
       const response = await fetch("/api/reports");
       const data = await response.json();
 
       if (data.success) {
-        setReports(data.reports);
-      }
+  const nuevosReportes: Report[] = data.reports;
+
+  if (nuevosReportes.length > 0) {
+    const masReciente = [...nuevosReportes].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime()
+    )[0];
+
+    if (ultimaAlertaId !== null && masReciente.id !== ultimaAlertaId) {
+      setAlertaNueva(masReciente);
+    }
+
+    setUltimaAlertaId(masReciente.id);
+  }
+
+  setReports(nuevosReportes);
+} 
     } catch (error) {
       console.error("Error cargando reportes:", error);
     } finally {
@@ -124,7 +142,7 @@ async function handleLogout() {
       default:
         return status.toUpperCase();
     } 
-  }
+  } 
 const mapReports = reports.filter((report) => {
   if (report.latitude === null || report.longitude === null) {
     return false;
@@ -147,6 +165,42 @@ const mapReports = reports.filter((report) => {
 }); 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      {alertaNueva && (
+  <div className="fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border border-red-500 bg-red-950 p-4 shadow-2xl">
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-red-300">
+          🚨 Nueva alerta
+        </p>
+
+        <h2 className="mt-1 text-xl font-bold text-white">
+          {alertaNueva.category}
+        </h2>
+
+        <p className="mt-1 text-sm text-red-100">
+          {alertaNueva.description}
+        </p>
+      </div>
+
+      <button
+        onClick={() => setAlertaNueva(null)}
+        className="rounded-lg bg-red-900 px-3 py-2 text-sm font-bold text-white"
+      >
+        ✕
+      </button>
+    </div>
+
+    <button
+      onClick={() => {
+        setSelectedReport(alertaNueva);
+        setAlertaNueva(null);
+      }}
+      className="mt-3 w-full rounded-xl bg-red-600 px-4 py-3 font-bold text-white hover:bg-red-500"
+    >
+      👁 Ver alerta
+    </button>
+  </div>
+)} 
       <div className="mx-auto max-w-7xl px-5 py-8">
 
         <header className="mb-8 flex flex-col gap-4 border-b border-slate-800 pb-6 md:flex-row md:items-center md:justify-between">
