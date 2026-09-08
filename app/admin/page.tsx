@@ -343,6 +343,11 @@ setAlertaCriticaRevisada(
     <p className="mt-1 text-3xl font-bold text-white">
       {criticalAlerts}
     </p>
+    {alertasCriticasPendientes.length > 0 && (
+  <p className="mt-2 text-sm font-bold text-red-300">
+    {alertasCriticasPendientes.length} sin revisar
+  </p>
+)} 
     {!alertaCriticaRevisada && criticalAlerts > 0 && (
   <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white animate-pulse">
     🔴 SIN REVISAR
