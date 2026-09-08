@@ -1,84 +1,158 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { useEffect, useMemo, useState } from "react";
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+import L, { LatLngBoundsExpression } from "leaflet";
 
 type Report = {
   id: number;
   category: string;
-  description: string;
+  description?: string;
   status: string;
   latitude: number | null;
   longitude: number | null;
   createdAt: string;
 };
 
-const MARKER_CONFIG: Record<string, { color: string; emoji: string }> = {
-  "Delito / Robo": { color: "#ef4444", emoji: "🚨" },
-  "Persona sospechosa": { color: "#f97316", emoji: "👤" },
-  "Vehículo sospechoso": { color: "#eab308", emoji: "🚗" },
-  Accidente: { color: "#3b82f6", emoji: "⚠️" },
-  Incendio: { color: "#a855f7", emoji: "🔥" },
-  Emergencia: { color: "#10b981", emoji: "🆘" },
+type Props = {
+  reports: Report[];
+  mode?: "admin" | "public";
+  onSelectReport?: (report: Report) => void;
+  heightClassName?: string;
+};
+
+const OTAMENDI_CENTER: [number, number] = [-38.112, -57.84];
+
+const MARKER_CONFIG: Record<string, { color: string; emoji: string; label: string }> = {
+  "Delito / Robo": { color: "#ef4444", emoji: "🚨", label: "Delito / Robo" },
+  "Persona sospechosa": { color: "#f97316", emoji: "👤", label: "Persona" },
+  "Vehículo sospechoso": { color: "#eab308", emoji: "🚗", label: "Vehículo" },
+  Accidente: { color: "#3b82f6", emoji: "⚠️", label: "Accidente" },
+  Incendio: { color: "#a855f7", emoji: "🔥", label: "Incendio" },
+  Emergencia: { color: "#10b981", emoji: "🆘", label: "Emergencia" },
 };
 
 const FILTROS = [
-  { label: "Todos", value: "Todos", className: "bg-slate-700 text-white" },
-  { label: "🚨 Delito / Robo", value: "Delito / Robo", className: "bg-red-500 text-white" },
-  { label: "👤 Persona sospechosa", value: "Persona sospechosa", className: "bg-orange-500 text-white" },
-  { label: "🚗 Vehículo sospechoso", value: "Vehículo sospechoso", className: "bg-yellow-500 text-black" },
-  { label: "⚠️ Accidente", value: "Accidente", className: "bg-blue-500 text-white" },
-  { label: "🔥 Incendio", value: "Incendio", className: "bg-purple-500 text-white" },
-  { label: "🆘 Emergencia", value: "Emergencia", className: "bg-emerald-500 text-white" },
+  { label: "Todos", value: "Todos" },
+  { label: "🚨 Robo", value: "Delito / Robo" },
+  { label: "👤 Persona", value: "Persona sospechosa" },
+  { label: "🚗 Vehículo", value: "Vehículo sospechoso" },
+  { label: "⚠️ Accidente", value: "Accidente" },
+  { label: "🔥 Incendio", value: "Incendio" },
+  { label: "🆘 Emergencia", value: "Emergencia" },
 ];
 
+function isCritical(category: string) {
+  return category === "Emergencia" || category === "Delito / Robo";
+}
+
 function getMarkerIcon(category: string, isNew: boolean) {
-  const item = MARKER_CONFIG[category] || { color: "#64748b", emoji: "📍" };
+  const item = MARKER_CONFIG[category] || {
+    color: "#64748b",
+    emoji: "📍",
+    label: "Alerta",
+  };
+
+  const glow = isCritical(category)
+    ? `0 0 0 5px ${item.color}33, 0 6px 18px rgba(0,0,0,.5)`
+    : "0 6px 18px rgba(0,0,0,.45)";
 
   return L.divIcon({
-    className: "",
+    className: "alerta-marker-wrapper",
     html: `
-      <style>
-        @keyframes alertaPulse {
-          0% { transform: scale(0.8); opacity: 0.5; }
-          70% { transform: scale(1.6); opacity: 0; }
-          100% { transform: scale(1.6); opacity: 0; }
-        }
-      </style>
-      <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+      <div style="position:relative;width:48px;height:52px;display:flex;align-items:center;justify-content:center;">
         ${
           isNew
-            ? `<div style="position:absolute;width:44px;height:44px;border-radius:50%;background:${item.color};opacity:0.35;animation:alertaPulse 1.4s infinite;"></div>`
+            ? `<div style="position:absolute;top:5px;width:40px;height:40px;border-radius:999px;background:${item.color};opacity:.35;animation:alertaPulse 1.35s infinite;"></div>`
             : ""
         }
-        <div style="position:relative;background:${item.color};width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:2;">
-          <span style="transform:rotate(45deg);font-size:17px;">${item.emoji}</span>
+        <div style="position:relative;width:38px;height:38px;border-radius:14px 14px 14px 3px;transform:rotate(-45deg);background:${item.color};border:3px solid #fff;box-shadow:${glow};display:flex;align-items:center;justify-content:center;z-index:2;">
+          <span style="transform:rotate(45deg);font-size:17px;line-height:1;">${item.emoji}</span>
         </div>
       </div>
     `,
-    iconSize: [44, 44],
-    iconAnchor: [22, 44],
-    popupAnchor: [0, -44],
+    iconSize: [48, 52],
+    iconAnchor: [24, 45],
+    popupAnchor: [0, -42],
   });
 }
 
 function statusLabel(status: string) {
   switch (status) {
-    case "pendiente": return "Pendiente";
-    case "en_analisis": return "En análisis";
-    case "verificada": return "Verificada";
-    case "resuelta": return "Resuelta";
-    case "descartada": return "Descartada";
-    default: return status;
+    case "pendiente":
+      return "Pendiente";
+    case "en_analisis":
+      return "En análisis";
+    case "verificada":
+      return "Verificada";
+    case "resuelta":
+      return "Resuelta";
+    case "descartada":
+      return "Descartada";
+    default:
+      return status;
   }
 }
 
-export default function MapaAlertas({ reports }: { reports: Report[] }) {
-  const [filtro, setFiltro] = useState("Todos");
+function relativeTime(date: string) {
+  const diff = Math.max(0, Date.now() - new Date(date).getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Ahora";
+  if (minutes < 60) return `Hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `Hace ${days} d`;
+}
 
-  const reportsConUbicacion = useMemo(
+function MapViewport({ reports, resetKey }: { reports: Report[]; resetKey: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const valid = reports.filter(
+      (report) => report.latitude !== null && report.longitude !== null
+    );
+
+    window.setTimeout(() => {
+      if (valid.length === 0) {
+        map.setView(OTAMENDI_CENTER, 14, { animate: true });
+        return;
+      }
+
+      if (valid.length === 1) {
+        map.setView([valid[0].latitude!, valid[0].longitude!], 16, {
+          animate: true,
+        });
+        return;
+      }
+
+      const bounds = valid.map(
+        (report) => [report.latitude!, report.longitude!] as [number, number]
+      ) as LatLngBoundsExpression;
+      map.fitBounds(bounds, { padding: [45, 45], maxZoom: 16, animate: true });
+    }, 0);
+  }, [map, reports, resetKey]);
+
+  return null;
+}
+
+export default function MapaAlertas({
+  reports,
+  mode = "public",
+  onSelectReport,
+  heightClassName = "h-[460px] md:h-[560px]",
+}: Props) {
+  const [filtro, setFiltro] = useState("Todos");
+  const [resetKey, setResetKey] = useState(0);
+
+  const filteredReports = useMemo(
     () =>
       reports.filter(
         (report) =>
@@ -89,33 +163,59 @@ export default function MapaAlertas({ reports }: { reports: Report[] }) {
     [reports, filtro]
   );
 
-  const ahora = Date.now();
-
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap gap-2 text-sm">
+    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-3 shadow-2xl shadow-black/10">
+      <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-none">
         {FILTROS.map((item) => (
           <button
             key={item.value}
             onClick={() => setFiltro(item.value)}
-            className={`rounded-xl px-3 py-2 font-medium transition ${item.className} ${
+            className={`shrink-0 rounded-full border px-3 py-2 font-semibold transition ${
               filtro === item.value
-                ? "ring-2 ring-white ring-offset-2 ring-offset-slate-950"
-                : "opacity-80 hover:opacity-100"
+                ? "border-white/30 bg-white text-slate-950"
+                : "border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500"
             }`}
           >
             {item.label}
           </button>
         ))}
+
+        <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+          <span className="rounded-full bg-slate-950 px-3 py-2 text-slate-400">
+            {filteredReports.length} visibles
+          </span>
+          <button
+            onClick={() => setResetKey((value) => value + 1)}
+            className="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 font-semibold text-slate-200 hover:bg-slate-800"
+            title="Centrar el mapa en las alertas visibles"
+          >
+            ◎ Centrar
+          </button>
+        </div>
       </div>
 
-      <div className="h-[500px] w-full overflow-hidden rounded-3xl border border-slate-800">
-        <MapContainer center={[-38.112, -57.84]} zoom={14} style={{ height: "100%", width: "100%" }}>
-          <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <div className={`${heightClassName} w-full overflow-hidden rounded-2xl bg-slate-950`}>
+        <MapContainer
+          center={OTAMENDI_CENTER}
+          zoom={14}
+          style={{ height: "100%", width: "100%" }}
+          zoomControl
+        >
+          <TileLayer
+            attribution="&copy; OpenStreetMap contributors"
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
 
-          {reportsConUbicacion.map((report) => {
-            const fecha = new Date(report.createdAt).getTime();
-            const isNew = ahora >= fecha && ahora - fecha <= 10 * 60 * 1000;
+          <MapViewport reports={filteredReports} resetKey={resetKey} />
+
+          {filteredReports.map((report) => {
+            const age = Date.now() - new Date(report.createdAt).getTime();
+            const isNew = age >= 0 && age <= 10 * 60 * 1000;
+            const config = MARKER_CONFIG[report.category] || {
+              color: "#64748b",
+              emoji: "📍",
+              label: "Alerta",
+            };
 
             return (
               <Marker
@@ -123,15 +223,71 @@ export default function MapaAlertas({ reports }: { reports: Report[] }) {
                 position={[report.latitude!, report.longitude!]}
                 icon={getMarkerIcon(report.category, isNew)}
               >
-                <Popup>
-                  <div style={{ minWidth: "210px" }}>
-                    <strong>🚨 {report.category}</strong>
-                    <hr style={{ margin: "8px 0" }} />
-                    <div><strong>Reporte N.º:</strong> #{report.id}</div>
-                    <div style={{ marginTop: "6px" }}><strong>Descripción:</strong><br />{report.description}</div>
-                    <div style={{ marginTop: "6px" }}><strong>Estado:</strong> {statusLabel(report.status)}</div>
-                    <div style={{ marginTop: "6px" }}><strong>Fecha:</strong> {new Date(report.createdAt).toLocaleString("es-AR")}</div>
-                    <div style={{ marginTop: "6px" }}><strong>Ubicación:</strong><br />{report.latitude?.toFixed(5)}, {report.longitude?.toFixed(5)}</div>
+                <Popup minWidth={235}>
+                  <div style={{ color: "#0f172a" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          width: 28,
+                          height: 28,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 8,
+                          background: config.color,
+                          color: "white",
+                        }}
+                      >
+                        {config.emoji}
+                      </span>
+                      <div>
+                        <strong>{report.category}</strong>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          {relativeTime(report.createdAt)} · {statusLabel(report.status)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {mode === "admin" ? (
+                      <>
+                        <div style={{ marginTop: 10, fontSize: 13 }}>
+                          <strong>Reporte #{report.id}</strong>
+                        </div>
+                        {report.description && (
+                          <div style={{ marginTop: 6, fontSize: 13 }}>
+                            {report.description.length > 120
+                              ? `${report.description.slice(0, 120)}…`
+                              : report.description}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+                          📍 {report.latitude?.toFixed(5)}, {report.longitude?.toFixed(5)}
+                        </div>
+                        {onSelectReport && (
+                          <button
+                            type="button"
+                            onClick={() => onSelectReport(report)}
+                            style={{
+                              marginTop: 10,
+                              width: "100%",
+                              border: 0,
+                              borderRadius: 10,
+                              padding: "9px 10px",
+                              background: "#0f172a",
+                              color: "white",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Ver detalle completo
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ marginTop: 10, fontSize: 13, color: "#475569" }}>
+                        📍 Ubicación aproximada por seguridad.
+                      </div>
+                    )}
                   </div>
                 </Popup>
               </Marker>

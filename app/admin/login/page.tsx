@@ -5,34 +5,30 @@ import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setLoading(true);
     setError("");
 
     try {
       const response = await fetch("/api/admin/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-
       const data = await response.json();
 
-      if (data.success) {
-        router.push("/admin");
-        router.refresh();
-      } else {
-        setError("Contraseña incorrecta");
+      if (!data.success) {
+        setError("Contraseña incorrecta o acceso no autorizado.");
+        return;
       }
+
+      router.push("/admin");
+      router.refresh();
     } catch {
       setError("No se pudo iniciar sesión. Intentá nuevamente.");
     } finally {
@@ -41,135 +37,38 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background:
-          "linear-gradient(135deg, #07111f 0%, #0b1d35 50%, #08111e 100%)",
-        padding: "20px",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "420px",
-          background: "#101d2d",
-          border: "1px solid #263b52",
-          borderRadius: "20px",
-          padding: "35px",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
-        }}
-      >
-        <div
-          style={{
-            width: "64px",
-            height: "64px",
-            borderRadius: "18px",
-            background: "#dc2626",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            margin: "0 auto 20px",
-            fontSize: "32px",
-          }}
-        >
-          🚨
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
+      <div className="w-full max-w-md rounded-[32px] border border-slate-800 bg-slate-900 p-7 shadow-2xl shadow-black/30 sm:p-9">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500 text-3xl shadow-lg shadow-red-950/40">🚨</div>
+        <p className="mt-6 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-red-400">Centro de monitoreo</p>
+        <h1 className="mt-2 text-center text-3xl font-black tracking-tight">ALERTA OTAMENDI</h1>
+        <p className="mt-2 text-center text-sm text-slate-400">Acceso privado para operadores autorizados.</p>
 
-        <h1
-          style={{
-            color: "white",
-            textAlign: "center",
-            marginBottom: "8px",
-          }}
-        >
-          ALERTA OTAMENDI
-        </h1>
-
-        <p
-          style={{
-            color: "#94a3b8",
-            textAlign: "center",
-            marginBottom: "30px",
-          }}
-        >
-          Acceso al panel de administración
-        </p>
-
-        <form onSubmit={handleSubmit}>
-          <label
-            style={{
-              display: "block",
-              color: "#cbd5e1",
-              marginBottom: "8px",
-            }}
-          >
-            Contraseña
-          </label>
-
+        <form onSubmit={handleSubmit} className="mt-7">
+          <label className="text-sm font-semibold text-slate-300">Contraseña de acceso</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Ingresá tu contraseña"
+            autoComplete="current-password"
             required
-            style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: "10px",
-              border: "1px solid #334155",
-              background: "#0b1523",
-              color: "white",
-              fontSize: "16px",
-              boxSizing: "border-box",
-            }}
+            autoFocus
+            className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-base outline-none placeholder:text-slate-600 focus:border-red-500"
           />
 
-          {error && (
-            <p
-              style={{
-                color: "#f87171",
-                marginTop: "12px",
-                textAlign: "center",
-              }}
-            >
-              {error}
-            </p>
-          )}
+          {error && <p className="mt-3 rounded-xl bg-red-500/10 p-3 text-center text-sm font-semibold text-red-300">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            style={{
-              width: "100%",
-              marginTop: "20px",
-              padding: "14px",
-              border: "none",
-              borderRadius: "10px",
-              background: "#dc2626",
-              color: "white",
-              fontSize: "16px",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
+            className="mt-5 w-full rounded-2xl bg-red-600 py-4 font-black hover:bg-red-500 disabled:opacity-50"
           >
-            {loading ? "Ingresando..." : "Ingresar"}
+            {loading ? "Ingresando…" : "Ingresar al centro"}
           </button>
         </form>
 
-        <p
-          style={{
-            color: "#64748b",
-            textAlign: "center",
-            fontSize: "12px",
-            marginTop: "25px",
-          }}
-        >
-          Panel privado • Alerta Otamendi
-        </p>
+        <div className="mt-6 border-t border-slate-800 pt-5 text-center text-xs text-slate-600">Panel privado · Sesión protegida</div>
       </div>
     </main>
   );

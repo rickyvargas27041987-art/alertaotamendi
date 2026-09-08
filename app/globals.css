@@ -9,3 +9,36 @@ body {
 body {
   min-height: 100vh;
 }
+@keyframes alertaPulse {
+  0% {
+    transform: scale(0.78);
+    opacity: 0.55;
+  }
+  75%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.alerta-marker-wrapper {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.25) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 16px !important;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}

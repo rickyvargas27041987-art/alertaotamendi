@@ -1,15 +1,39 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "../lib/supabase"; 
+import { supabase } from "../lib/supabase";
+
 const categories = [
-  { icon: "🚨", title: "Delito / Robo", color: "bg-red-500" },
-  { icon: "👤", title: "Persona sospechosa", color: "bg-orange-500" },
-  { icon: "🚗", title: "Vehículo sospechoso", color: "bg-yellow-500" },
-  { icon: "⚠️", title: "Accidente", color: "bg-blue-500" },
-  { icon: "🔥", title: "Incendio", color: "bg-purple-500" },
-  { icon: "🆘", title: "Emergencia", color: "bg-emerald-500" },
+  { icon: "🚨", title: "Delito / Robo", helper: "Robo, intento de robo o delito en curso", color: "bg-red-500" },
+  { icon: "👤", title: "Persona sospechosa", helper: "Conducta o presencia que te genera preocupación", color: "bg-orange-500" },
+  { icon: "🚗", title: "Vehículo sospechoso", helper: "Vehículo en situación inusual o sospechosa", color: "bg-yellow-500" },
+  { icon: "⚠️", title: "Accidente", helper: "Siniestro vial o situación con personas heridas", color: "bg-blue-500" },
+  { icon: "🔥", title: "Incendio", helper: "Fuego, humo o riesgo de propagación", color: "bg-purple-500" },
+  { icon: "🆘", title: "Emergencia", helper: "Situación urgente que requiere atención inmediata", color: "bg-emerald-500" },
 ];
+
+const IMPORTANT_CATEGORIES = new Set([
+  "Delito / Robo",
+  "Accidente",
+  "Incendio",
+  "Emergencia",
+]);
+
+type PublicReport = {
+  id: number;
+  category: string;
+  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  createdAt: string;
+};
+
+type NearbyToast = {
+  id: number;
+  title: string;
+  body: string;
+  important: boolean;
+} | null;
 
 function calcularDistanciaKm(
   lat1: number,
@@ -18,20 +42,50 @@ function calcularDistanciaKm(
   lon2: number
 ) {
   const R = 6371;
-
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
-
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
       Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((character) => character.charCodeAt(0)));
+}
 
-  return R * c;
+function getPosition() {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 60_000,
+    });
+  });
+}
+
+function getNotifiedIds() {
+  try {
+    return new Set<number>(
+      JSON.parse(localStorage.getItem("alertas_notificadas") || "[]")
+    );
+  } catch {
+    return new Set<number>();
+  }
+}
+
+function saveNotifiedId(id: number) {
+  const ids = getNotifiedIds();
+  ids.add(id);
+  localStorage.setItem(
+    "alertas_notificadas",
+    JSON.stringify(Array.from(ids).slice(-150))
+  );
 }
 
 export default function Home() {
@@ -39,642 +93,608 @@ export default function Home() {
   const [description, setDescription] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
-const [latitude, setLatitude] = useState<number | null>(null);
-const [longitude, setLongitude] = useState<number | null>(null);
-const [locationMessage, setLocationMessage] = useState("");
-const [photo, setPhoto] = useState<File | null>(null);
-const [video, setVideo] = useState<File | null>(null);
-const [audio, setAudio] = useState<File | null>(null);
-const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-const [emergencyMenuOpen, setEmergencyMenuOpen] = useState(false);
-
-
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [locationMessage, setLocationMessage] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [video, setVideo] = useState<File | null>(null);
+  const [audio, setAudio] = useState<File | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [emergencyMenuOpen, setEmergencyMenuOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-const audioChunksRef = useRef<Blob[]>([]);
+  const [nearbyToast, setNearbyToast] = useState<NearbyToast>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const reportFormRef = useRef<HTMLDivElement | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const baselineReadyRef = useRef(false);
 
-  useEffect(() => {
-  const saved = localStorage.getItem("notificationsEnabled");
-  setNotificationsEnabled(saved === "true");
-}, []);
+  function showToast(id: number, title: string, body: string, important: boolean) {
+    if (getNotifiedIds().has(id)) return;
+    saveNotifiedId(id);
 
-useEffect(() => {
-  if (notificationsEnabled && (latitude === null || longitude === null)) {
-    getLocation();
-  }
-}, [notificationsEnabled]);
-  useEffect(() => {
-  if (
-    !notificationsEnabled ||
-    latitude === null ||
-    longitude === null
-  ) {
-    return;
-  }
+    setNearbyToast({ id, title, body, important });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(
+      () => setNearbyToast(null),
+      important ? 9000 : 5500
+    );
 
-  const channel = supabase
-    .channel("alertas-cercanas")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "Report",
-      },
-      (payload) => {
-        const reporte = payload.new as {
-          category?: string;
-          description?: string;
-          latitude?: number | null;
-          longitude?: number | null;
-        };
-
-        if (
-          reporte.latitude == null ||
-          reporte.longitude == null
-        ) {
-          return;
-        }
-
-        const distancia = calcularDistanciaKm(
-          latitude,
-          longitude,
-          reporte.latitude,
-          reporte.longitude
-        );
-
-        if (distancia <= 25) {
-          if (
-            "Notification" in window &&
-            Notification.permission === "granted"
-          ) {
-            new Notification("🚨 Alerta cercana", {
-              body: `${reporte.category ?? "Nueva alerta"} a ${distancia.toFixed(1)} km de tu ubicación`,
-            });
-          }
-const sonido = new Audio("/alerta_beep.wav");
-sonido.volume = 1;
-sonido.play().catch((error) => {
-  console.log("El navegador bloqueó el sonido:", error);
-});
-          if ("vibrate" in navigator) {
-            navigator.vibrate([300, 150, 300]);
-          }
-        }
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [notificationsEnabled, latitude, longitude]);
-async function toggleNotifications() {
-  if (notificationsEnabled) {
-    getLocation();  
-    
-    localStorage.setItem("notificationsEnabled", "false");
-    setNotificationsEnabled(false);
-    return;
-  }
-
-  if (!("Notification" in window)) {
-    alert("Este dispositivo no permite notificaciones.");
-    return;
-  }
-
-  const permission = await Notification.requestPermission();
-
-  if (permission !== "granted") {
-    alert("Necesitamos permiso para enviarte alertas cercanas.");
-    return;
-  }
-
-  localStorage.setItem("notificationsEnabled", "true");
-  setNotificationsEnabled(true);
-}
-function getLocation() {
-  if (!navigator.geolocation) {
-    setLocationMessage("❌ Este dispositivo no permite geolocalización.");
-    return;
-  }
-
-  setLocationMessage("📍 Obteniendo ubicación...");
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      setLatitude(position.coords.latitude);
-      setLongitude(position.coords.longitude);
-      setLocationMessage("✅ Ubicación obtenida correctamente.");
-    },
-    () => {
-      setLocationMessage("❌ No se pudo obtener la ubicación.");
+    if (important) {
+      const sound = new Audio("/alerta_beep.wav");
+      sound.volume = 0.85;
+      void sound.play().catch(() => undefined);
+      if ("vibrate" in navigator) navigator.vibrate([250, 120, 250]);
     }
-  );
-}
- async function startRecording() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    const preferredMimeType = [
-  "audio/webm;codecs=opus",
-  "audio/webm",
-  "audio/mp4",
-].find((type) => MediaRecorder.isTypeSupported(type));
-
-const recorder = preferredMimeType
-  ? new MediaRecorder(stream, { mimeType: preferredMimeType })
-  : new MediaRecorder(stream);
-    mediaRecorderRef.current = recorder;
-    audioChunksRef.current = [];
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        audioChunksRef.current.push(event.data);
-      }
-    };
-
-    recorder.onstop = () => {
-      const mimeType =
-  recorder.mimeType ||
-  preferredMimeType ||
-  "audio/webm";
-
-const extension = mimeType.includes("mp4")
-  ? "mp4"
-  : "webm";
-
-const blob = new Blob(audioChunksRef.current, {
-  type: mimeType,
-});
-
-const file = new File(
-  [blob],
-  `audio-${Date.now()}.${extension}`,
-  { type: mimeType }
-);
-
-      setAudio(file);
-      setIsRecording(false);
-
-      recorder.stream.getTracks().forEach((track) => track.stop());
-    };
-
-    recorder.start();
-    setIsRecording(true);
-  } catch (error) {
-    console.error("Error al acceder al micrófono:", error);
-    setMessage("❌ No se pudo acceder al micrófono.");
-    setIsRecording(false);
   }
-}
 
-function stopRecording() {
-  const recorder = mediaRecorderRef.current;
+  async function refreshPushSubscription(lat: number, lon: number) {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
 
-  if (recorder && recorder.state === "recording") {
-    recorder.stop();
-  }
-}
-async function sendReport() {
-  if (!selected || !description.trim()) {
-    setMessage("⚠️ Escribí una descripción antes de enviar.");
-    return;
-  }
-let reportLatitude = latitude;
-let reportLongitude = longitude;
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!publicKey) throw new Error("Falta NEXT_PUBLIC_VAPID_PUBLIC_KEY.");
 
-if (reportLatitude === null || reportLongitude === null) {
-  try {
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
-    });
-
-    reportLatitude = position.coords.latitude;
-    reportLongitude = position.coords.longitude;
-
-    setLatitude(reportLatitude);
-    setLongitude(reportLongitude);
-  } catch (error) {
-    console.error("No se pudo obtener la ubicación:", error);
-    setMessage("❌ Necesitamos tu ubicación para enviar la alerta.");
-    return;
-  }
-}
-  setSending(true);
-  setMessage("");
-
-  try {
-    let imageUrl: string | null = null;
-    let videoUrl: string | null = null;
-    let audioUrl: string | null = null;
-
-    // SUBIR FOTO
-    if (photo) {
-      const fileExt = photo.name.split(".").pop();
-      const fileName = `fotos/${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("alertas")
-        .upload(fileName, photo);
-
-      if (uploadError) {
-        console.error("Error subiendo foto:", uploadError);
-        setMessage("❌ No se pudo subir la foto.");
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("alertas")
-        .getPublicUrl(fileName);
-
-      imageUrl = publicUrlData.publicUrl;
     }
 
-    // SUBIR VIDEO
-    if (video) {
-      const fileExt = video.name.split(".").pop();
-      const fileName = `videos/${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("alertas")
-        .upload(fileName, video);
-
-      if (uploadError) {
-        console.error("Error subiendo video:", uploadError);
-        setMessage("❌ No se pudo subir el video.");
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("alertas")
-        .getPublicUrl(fileName);
-
-      videoUrl = publicUrlData.publicUrl;
-    }
-
-    // SUBIR AUDIO
-    if (audio) {
-      const fileExt = audio.name.split(".").pop();
-      const fileName = `audios/${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("alertas")
-        .upload(fileName, audio, {
-  contentType: audio.type || "audio/webm",
-  upsert: false,
-});
-
-      if (uploadError) {
-        console.error("Error subiendo audio:", uploadError);
-        setMessage("❌ No se pudo subir el audio.");
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("alertas")
-        .getPublicUrl(fileName);
-
-      audioUrl = publicUrlData.publicUrl;
-    }
-
-    const response = await fetch("/api/reports", {
+    const json = subscription.toJSON();
+    const response = await fetch("/api/push/subscribe", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        category: selected,
-        description,
-        latitude: reportLatitude,
-        longitude: reportLongitude,
-        imageUrl,
-        videoUrl,
-        audioUrl,
+        endpoint: subscription.endpoint,
+        p256dh: json.keys?.p256dh,
+        auth: json.keys?.auth,
+        latitude: lat,
+        longitude: lon,
       }),
     });
 
-    const data = await response.json();
+    if (!response.ok) throw new Error("No se pudo registrar el dispositivo.");
+    return true;
+  }
 
-    if (!response.ok) {
-      setMessage("❌ No se pudo enviar la alerta.");
+  async function enableNotifications() {
+    setNotificationBusy(true);
+    try {
+      if (!navigator.geolocation) throw new Error("Este dispositivo no permite geolocalización.");
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        throw new Error("Este navegador no admite notificaciones push.");
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        throw new Error("Necesitamos permiso para enviarte alertas cercanas.");
+      }
+
+      setLocationMessage("📍 Obteniendo ubicación para alertas cercanas…");
+      const position = await getPosition();
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      setLatitude(lat);
+      setLongitude(lon);
+
+      await refreshPushSubscription(lat, lon);
+      localStorage.setItem("notificationsEnabled", "true");
+      setNotificationsEnabled(true);
+      setLocationMessage("✅ Alertas cercanas activadas para tu ubicación.");
+      setMessage("🔔 Vas a recibir avisos importantes dentro de un radio de 10 km.");
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "No se pudieron activar las alertas.";
+      setMessage(`❌ ${text}`);
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
+  async function disableNotifications() {
+    setNotificationBusy(true);
+    try {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager.getSubscription();
+
+        if (subscription) {
+          await fetch("/api/push/unsubscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          }).catch(() => undefined);
+          await subscription.unsubscribe();
+        }
+      }
+
+      localStorage.setItem("notificationsEnabled", "false");
+      setNotificationsEnabled(false);
+      setMessage("🔕 Alertas cercanas desactivadas.");
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
+  async function toggleNotifications() {
+    if (notificationBusy) return;
+    if (notificationsEnabled) await disableNotifications();
+    else await enableNotifications();
+  }
+
+  async function getLocation() {
+    if (!navigator.geolocation) {
+      setLocationMessage("❌ Este dispositivo no permite geolocalización.");
       return;
     }
-if (data.report?.id) {
-  const savedReports = JSON.parse(
-    localStorage.getItem("mis_reportes") || "[]"
-  );
 
-  if (!savedReports.includes(data.report.id)) {
-    savedReports.push(data.report.id);
-    localStorage.setItem("mis_reportes", JSON.stringify(savedReports));
+    setLocationMessage("📍 Obteniendo ubicación…");
+    try {
+      const position = await getPosition();
+      setLatitude(position.coords.latitude);
+      setLongitude(position.coords.longitude);
+      setLocationMessage("✅ Ubicación lista para enviar la alerta.");
+    } catch {
+      setLocationMessage("❌ No se pudo obtener la ubicación.");
+    }
   }
-} 
-    setMessage(
-      `✅ Alerta enviada correctamente. Número de reporte: #${data.report?.id ?? ""}`
-    );
 
-    setDescription("");
-    setSelected("");
-    setPhoto(null);
-    setVideo(null);
-    setAudio(null);
-    setLatitude(null);
-    setLongitude(null);
-    setLocationMessage("");
-  } catch (error) {
-    console.error("Error enviando alerta:", error);
-    setMessage("❌ Error de conexión con el sistema.");
-  } finally {
-    setSending(false);
+  useEffect(() => {
+    const saved = localStorage.getItem("notificationsEnabled") === "true";
+    setNotificationsEnabled(saved);
+
+    if (saved && "Notification" in window && Notification.permission === "granted") {
+      void getPosition()
+        .then(async (position) => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          setLatitude(lat);
+          setLongitude(lon);
+          setLocationMessage("✅ Alertas cercanas activas.");
+          await refreshPushSubscription(lat, lon);
+        })
+        .catch(() => {
+          setLocationMessage("⚠️ Abrí la ubicación para actualizar las alertas cercanas.");
+        });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "PUSH_ALERT") return;
+      const payload = event.data.payload || {};
+      const id = Number(payload.reportId);
+      if (!Number.isInteger(id)) return;
+
+      showToast(
+        id,
+        payload.title || "🚨 Alerta cercana",
+        payload.body || "Se registró una alerta cerca tuyo.",
+        payload.priority === "critical" || payload.priority === "high"
+      );
+    };
+
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsEnabled || latitude === null || longitude === null) return;
+
+    let active = true;
+
+    async function checkNearbyAlerts() {
+      try {
+        const response = await fetch("/api/reports", { cache: "no-store" });
+        const data = await response.json();
+        if (!active || !data.success || !Array.isArray(data.reports)) return;
+
+        const currentReports: PublicReport[] = data.reports;
+
+        if (!baselineReadyRef.current) {
+          currentReports.forEach((report) => saveNotifiedId(report.id));
+          baselineReadyRef.current = true;
+          return;
+        }
+
+        for (const report of currentReports) {
+          if (
+            getNotifiedIds().has(report.id) ||
+            report.latitude === null ||
+            report.longitude === null ||
+            ["resuelta", "descartada"].includes(report.status)
+          ) {
+            continue;
+          }
+
+          const distance = calcularDistanciaKm(
+            latitude,
+            longitude,
+            report.latitude,
+            report.longitude
+          );
+
+          if (distance <= 10) {
+            const important = IMPORTANT_CATEGORIES.has(report.category);
+            showToast(
+              report.id,
+              important ? "🚨 Alerta cercana" : "ℹ️ Aviso cerca tuyo",
+              `${report.category} a aproximadamente ${distance.toFixed(1)} km de tu ubicación.`,
+              important
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Error consultando alertas cercanas:", error);
+      }
+    }
+
+    void checkNearbyAlerts();
+    const interval = window.setInterval(checkNearbyAlerts, 12_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [notificationsEnabled, latitude, longitude]);
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMimeType = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+
+      const recorder = preferredMimeType
+        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+        : new MediaRecorder(stream);
+
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || preferredMimeType || "audio/webm";
+        const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        setAudio(
+          new File([blob], `audio-${Date.now()}.${extension}`, { type: mimeType })
+        );
+        setIsRecording(false);
+        recorder.stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Error al acceder al micrófono:", error);
+      setMessage("❌ No se pudo acceder al micrófono.");
+      setIsRecording(false);
+    }
   }
-}
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") recorder.stop();
+  }
+
+  function validateFile(file: File | null, maxMb: number, label: string) {
+    if (!file) return true;
+    if (file.size > maxMb * 1024 * 1024) {
+      setMessage(`⚠️ ${label} supera el máximo de ${maxMb} MB.`);
+      return false;
+    }
+    return true;
+  }
+
+  async function uploadMedia(file: File, folder: string) {
+    const extension = file.name.split(".").pop() || "bin";
+    const fileName = `${folder}/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from("alertas").upload(fileName, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if (error) throw error;
+    return supabase.storage.from("alertas").getPublicUrl(fileName).data.publicUrl;
+  }
+
+  async function sendReport() {
+    if (!selected) {
+      setMessage("⚠️ Elegí primero qué está pasando.");
+      return;
+    }
+    if (description.trim().length < 3) {
+      setMessage("⚠️ Contanos brevemente qué estás observando.");
+      return;
+    }
+    if (!validateFile(photo, 10, "La foto")) return;
+    if (!validateFile(video, 50, "El video")) return;
+    if (!validateFile(audio, 15, "El audio")) return;
+
+    let reportLatitude = latitude;
+    let reportLongitude = longitude;
+
+    if (reportLatitude === null || reportLongitude === null) {
+      try {
+        setLocationMessage("📍 Confirmando ubicación…");
+        const position = await getPosition();
+        reportLatitude = position.coords.latitude;
+        reportLongitude = position.coords.longitude;
+        setLatitude(reportLatitude);
+        setLongitude(reportLongitude);
+        setLocationMessage("✅ Ubicación confirmada.");
+      } catch {
+        setMessage("❌ Necesitamos tu ubicación para enviar la alerta.");
+        return;
+      }
+    }
+
+    setSending(true);
+    setMessage("");
+
+    try {
+      const imageUrl = photo ? await uploadMedia(photo, "fotos") : null;
+      const videoUrl = video ? await uploadMedia(video, "videos") : null;
+      const audioUrl = audio ? await uploadMedia(audio, "audios") : null;
+
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: selected,
+          description: description.trim(),
+          latitude: reportLatitude,
+          longitude: reportLongitude,
+          imageUrl,
+          videoUrl,
+          audioUrl,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(`❌ ${data.message || "No se pudo enviar la alerta."}`);
+        return;
+      }
+
+      if (data.report?.id) {
+        const savedReports: number[] = JSON.parse(
+          localStorage.getItem("mis_reportes") || "[]"
+        );
+        if (!savedReports.includes(data.report.id)) {
+          savedReports.push(data.report.id);
+          localStorage.setItem("mis_reportes", JSON.stringify(savedReports.slice(-100)));
+        }
+      }
+
+      setMessage(`✅ Alerta enviada. Número de reporte: #${data.report?.id ?? ""}`);
+      setDescription("");
+      setSelected("");
+      setPhoto(null);
+      setVideo(null);
+      setAudio(null);
+      if (!notificationsEnabled) {
+        setLatitude(null);
+        setLongitude(null);
+        setLocationMessage("");
+      }
+    } catch (error) {
+      console.error("Error enviando alerta:", error);
+      setMessage("❌ Error de conexión con el sistema.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const selectedCategory = categories.find((category) => category.title === selected);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-md px-5 pb-10">
-
-        <header className="flex items-center justify-between py-6">
-          <div className="flex items-center gap-2">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500 text-2xl">
-              🚨
+      {nearbyToast && (
+        <div
+          className={`fixed inset-x-3 top-3 z-[99999] mx-auto max-w-md rounded-2xl border p-4 shadow-2xl backdrop-blur ${
+            nearbyToast.important
+              ? "border-red-500/70 bg-red-950/95"
+              : "border-slate-600 bg-slate-900/95"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">{nearbyToast.important ? "🚨" : "📍"}</div>
+            <div className="min-w-0 flex-1">
+              <p className="font-black">{nearbyToast.title}</p>
+              <p className="mt-1 text-sm text-slate-200">{nearbyToast.body}</p>
+              <button
+                onClick={() => (window.location.href = "/mapa")}
+                className="mt-3 text-xs font-bold text-white underline underline-offset-4"
+              >
+                Ver mapa de alertas
+              </button>
             </div>
+            <button onClick={() => setNearbyToast(null)} className="text-slate-400">✕</button>
+          </div>
+        </div>
+      )}
 
+      <div className="mx-auto max-w-md px-4 pb-10 sm:px-5">
+        <header className="sticky top-0 z-30 -mx-4 flex items-center justify-between border-b border-slate-900 bg-slate-950/90 px-4 py-4 backdrop-blur sm:-mx-5 sm:px-5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500 text-2xl shadow-lg shadow-red-950/40">🚨</div>
             <div>
-              <h1 className="text-xl font-bold">ALERTA</h1>
-              <p className="text-sm font-semibold text-red-400">
-                OTAMENDI
-              </p>
+              <h1 className="text-xl font-black tracking-tight">ALERTA OTAMENDI</h1>
+              <p className="text-xs text-slate-500">Comunidad conectada</p>
             </div>
           </div>
 
-        <button
-  onClick={toggleNotifications}
-  className={`flex h-11 w-11 items-center justify-center rounded-full ${
-    notificationsEnabled ? "bg-yellow-500" : "bg-slate-800"
-  }`}
->
-  {notificationsEnabled ? "🔔" : "🔕"}
-</button>
+          <button
+            onClick={() => void toggleNotifications()}
+            disabled={notificationBusy}
+            className={`flex h-11 w-11 items-center justify-center rounded-full border text-xl transition disabled:opacity-50 ${
+              notificationsEnabled
+                ? "border-yellow-400 bg-yellow-500 text-slate-950"
+                : "border-slate-700 bg-slate-900"
+            }`}
+            title={notificationsEnabled ? "Desactivar alertas cercanas" : "Activar alertas cercanas"}
+          >
+            {notificationBusy ? "…" : notificationsEnabled ? "🔔" : "🔕"}
+          </button>
         </header>
 
-        <section className="mb-7 mt-4">
-          <p className="text-slate-400">Bienvenido</p>
-
-          <h2 className="mt-1 text-3xl font-bold">
-            ¿Qué está pasando?
-          </h2>
-
+        <section className="pt-7">
+          <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">REPORTE CIUDADANO</span>
+          <h2 className="mt-3 text-3xl font-black leading-tight">¿Qué está pasando?</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Informá rápidamente una situación para ayudar a mantener
-            comunicada a nuestra comunidad  
+            Elegí una opción, contanos brevemente qué ves y enviá la alerta. El centro de monitoreo recibe tu ubicación automáticamente.
           </p>
         </section>
 
-        <section>
-          <div className="grid grid-cols-2 gap-3">
-            {categories.map((category) => (
-              <button
-                key={category.title}
+        <section className="mt-6 grid grid-cols-2 gap-3">
+          {categories.map((category) => (
+            <button
+              key={category.title}
               onClick={() => {
-  setSelected(category.title);
-  setMessage("");
-
-  setTimeout(() => {
-    reportFormRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, 100);
-}}
-      className={`rounded-3xl border p-5 text-left transition-all ${
-            selected === category.title
-             ? "scale-[0.98] border-white bg-slate-700"
-                 : "border-slate-800 bg-slate-900 hover:bg-slate-800"
-                }`}
-              > 
-                <div
-                  className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${category.color} text-2xl`}
-                >
-                  {category.icon}
-                </div>
-
-                <p className="text-sm font-semibold">
-                  {category.title}
-                </p>
-              </button>
-            ))}
-          </div>
+                setSelected(category.title);
+                setMessage("");
+                window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+              }}
+              className={`min-h-36 rounded-3xl border p-4 text-left transition ${
+                selected === category.title
+                  ? "scale-[0.985] border-white/50 bg-slate-800 ring-2 ring-white/10"
+                  : "border-slate-800 bg-slate-900 hover:bg-slate-800"
+              }`}
+            >
+              <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl ${category.color} text-xl`}>{category.icon}</div>
+              <p className="text-sm font-bold">{category.title}</p>
+              <p className="mt-1 text-[11px] leading-4 text-slate-500">{category.helper}</p>
+            </button>
+          ))}
         </section>
 
         {selected && (
-       <section
-            ref={reportFormRef}
-            className="mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-5"
-               >
-            <p className="text-sm text-slate-400">
-              Categoría seleccionada
-            </p>
+          <section ref={reportFormRef} className="mt-6 scroll-mt-20 rounded-3xl border border-slate-800 bg-slate-900 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Paso 2 de 3</p>
+                <h3 className="mt-1 text-xl font-black">{selectedCategory?.icon} {selected}</h3>
+              </div>
+              <button onClick={() => setSelected("")} className="text-sm text-slate-500">Cambiar</button>
+            </div>
 
-            <h3 className="mt-1 text-xl font-bold">
-              {selected}
-            </h3>
-
+            <label className="mt-5 block text-sm font-semibold">Contanos qué estás observando</label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Contanos qué estás observando..."
-              className="mt-4 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
+              onChange={(e) => setDescription(e.target.value.slice(0, 1000))}
+              placeholder="Ej.: vehículo detenido hace varios minutos frente a una vivienda…"
+              className="mt-2 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
             />
+            <div className="mt-1 text-right text-[11px] text-slate-600">{description.length}/1000</div>
+
+            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold">📍 Ubicación</p>
+                  <p className="mt-1 text-xs text-slate-500">Necesaria para ubicar correctamente la alerta.</p>
+                </div>
+                <button onClick={() => void getLocation()} className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold">Obtener</button>
+              </div>
+              {locationMessage && <p className="mt-2 text-xs font-semibold text-slate-300">{locationMessage}</p>}
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm font-semibold">Evidencia opcional</p>
+              <p className="mt-1 text-xs text-slate-500">Adjuntá solo si podés hacerlo sin exponerte ni acercarte a la situación.</p>
+            </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+                📷 {photo ? "Foto ✓" : "Foto"}
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
+              </label>
+              <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+                🎥 {video ? "Video ✓" : "Video"}
+                <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] || null)} />
+              </label>
+              <button
+                type="button"
+                onPointerDown={() => void startRecording()}
+                onPointerUp={stopRecording}
+                onPointerCancel={stopRecording}
+                onPointerLeave={() => isRecording && stopRecording()}
+                className={`rounded-2xl py-3 text-sm font-semibold ${isRecording ? "bg-red-600" : "bg-slate-800"}`}
+              >
+                {isRecording ? "🔴 Grabando…" : audio ? "🎤 Audio ✓" : "🎤 Mantener para audio"}
+              </button>
+              <button onClick={() => setEmergencyMenuOpen((value) => !value)} className="rounded-2xl bg-red-600 py-3 text-sm font-semibold">
+                ☎️ Emergencias
+              </button>
+            </div>
 
-  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-    📷 Foto
+            {emergencyMenuOpen && (
+              <div className="mt-3 rounded-2xl border border-red-500/30 bg-slate-950 p-4">
+                <p className="mb-3 text-center font-bold">Si hay peligro inmediato, llamá al servicio correspondiente</p>
+                <div className="grid gap-2">
+                  <a href="tel:911" className="rounded-xl bg-red-600 p-3 text-center font-bold">🆘 Emergencias 911</a>
+                  <a href="tel:101" className="rounded-xl bg-blue-600 p-3 text-center font-bold">🚓 Policía 101</a>
+                  <a href="tel:107" className="rounded-xl bg-emerald-600 p-3 text-center font-bold">🚑 Emergencia médica 107</a>
+                  <a href="tel:100" className="rounded-xl bg-orange-600 p-3 text-center font-bold">🚒 Bomberos 100</a>
+                </div>
+              </div>
+            )}
 
-    <input
-      type="file"
-      accept="image/*"
-      capture="environment"
-      className="hidden"
-      onChange={(e) => {
-        const file = e.target.files?.[0] || null;
-        setPhoto(file);
-      }}
-    />
-  </label>
-  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-  🎥 Video
+            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
+              ⚠️ No intervengas, no persigas y no te expongas para obtener una foto o video. Ante peligro inmediato, llamá al 911.
+            </div>
 
-  <input
-    type="file"
-    accept="video/*"
-    capture="environment"
-    className="hidden"
-    onChange={(e) => {
-      const file = e.target.files?.[0] || null;
-      setVideo(file);
-    }}
-  />
-</label>
-<button
-  type="button"
-  onPointerDown={startRecording}
-  onPointerUp={stopRecording}
-  onPointerCancel={stopRecording}
-  onPointerLeave={() => {
-    if (isRecording) stopRecording();
-  }}
-  className={`rounded-2xl py-3 text-center text-sm font-semibold ${
-    isRecording
-      ? "bg-red-600 text-white"
-      : "bg-slate-800 text-white"
-  }`}
->
-  {isRecording
-    ? "🔴 Grabando... soltá para terminar"
-    : audio
-    ? "🎤 Audio grabado ✓"
-    : "🎤 Mantené apretado para grabar"}
-</button>
-<button
-  onClick={() => setEmergencyMenuOpen(!emergencyMenuOpen)}
-  className="rounded-2xl bg-red-600 py-3 text-sm font-semibold text-white"
->
-  ☎️ Emergencias
-</button> 
-             {emergencyMenuOpen && (
-  <div className="col-span-2 mt-2 rounded-2xl border border-red-500/30 bg-slate-900 p-4">
-    <h3 className="mb-3 text-center text-lg font-bold text-white">
-      🚨 Números de emergencia
-    </h3>
-
-    <div className="grid gap-2">
-      <a
-        href="tel:911"
-        className="rounded-xl bg-red-600 p-3 text-center font-semibold text-white"
-      >
-        🆘 Emergencias 911 — LLAMAR
-      </a>
-
-      <a
-        href="tel:101"
-        className="rounded-xl bg-blue-600 p-3 text-center font-semibold text-white"
-      >
-        🚓 Policía — LLAMAR
-      </a>
-
-      <a
-        href="tel:107"
-        className="rounded-xl bg-emerald-600 p-3 text-center font-semibold text-white"
-      >
-        🚑 Emergencia médica — LLAMAR
-      </a>
-
-      <a
-        href="tel:100"
-        className="rounded-xl bg-orange-600 p-3 text-center font-semibold text-white"
-      >
-        🚒 Bomberos — LLAMAR
-      </a>
-
-      <button
-        type="button"
-        onClick={() => setEmergencyMenuOpen(false)}
-        className="mt-1 rounded-xl bg-slate-700 p-3 font-semibold text-white"
-      >
-        ✕ Cerrar
-      </button>
-    </div>
-  </div>
-)} 
-</div>
-{video && (
-  <p className="mt-2 text-center text-sm font-semibold text-green-400">
-    ✅ Video seleccionado: {video.name}
-  </p>
-)}
-{audio && (
-  <p className="mt-2 text-center text-sm font-semibold text-green-400">
-    ✅ Audio seleccionado: {audio.name}
-  </p>
-)}
-{photo && (
-  <p className="mt-2 text-center text-sm font-semibold text-green-400">
-    ✅ Foto seleccionada: {photo.name}
-  </p>
-)}
-            {locationMessage && (
-  <p className="mt-3 text-center text-sm font-semibold text-slate-300">
-    {locationMessage}
-  </p>
-)}
             <button
-              onClick={sendReport}
+              onClick={() => void sendReport()}
               disabled={sending}
-              className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-bold transition hover:bg-red-600 disabled:opacity-50"
+              className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-black transition hover:bg-red-600 disabled:opacity-50"
             >
-              {sending ? "ENVIANDO..." : "🚨 ENVIAR ALERTA"}
+              {sending ? "ENVIANDO ALERTA…" : "🚨 ENVIAR ALERTA"}
             </button>
           </section>
         )}
 
         {message && (
-          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">
-            {message}
-          </div>
+          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">{message}</div>
         )}
 
-        <section className="mt-7 grid grid-cols-2 gap-3">
-       <button
-  onClick={() => {
-    window.location.href = "/mapa";
-  }}
-  className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold"
->
-  🗺️ Ver mapa
-       </button>
-
-<button
-    onClick={() => {
-    window.location.href = "/mis-reportes";
-  }}
-    className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-semibold"
->
-  📄 Mis reportes
-</button>
-        </section>
-
-        <section className="mt-7 rounded-3xl bg-slate-900 p-5">
-          <div className="flex gap-3">
-            <div className="text-xl">ℹ️</div>
-
-            <div>
-              <h3 className="font-semibold">
-                Usá la aplicación responsablemente
-              </h3>
-
-              <p className="mt-2 text-xs leading-5 text-slate-400">
-                Informá solamente situaciones que hayas observado.
-                Los reportes serán revisados antes de tomar acciones.
+        <section className="mt-7 rounded-3xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">{notificationsEnabled ? "🔔" : "🔕"}</div>
+            <div className="flex-1">
+              <h3 className="font-black">Alertas cercanas</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Avisos de situaciones reportadas dentro de 10 km. Las alertas importantes pueden llegar aunque no tengas la app abierta. En iPhone/iPad, agregá la web a la pantalla de inicio para usar notificaciones push.
               </p>
+              <button
+                onClick={() => void toggleNotifications()}
+                disabled={notificationBusy}
+                className={`mt-3 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50 ${notificationsEnabled ? "bg-slate-800" : "bg-yellow-500 text-slate-950"}`}
+              >
+                {notificationBusy ? "Procesando…" : notificationsEnabled ? "Desactivar avisos" : "Activar alertas cercanas"}
+              </button>
             </div>
           </div>
         </section>
 
-        <footer className="py-8 text-center text-xs text-slate-600">
-          ALERTA OTAMENDI · Comunidad conectada
-        </footer>
+        <section className="mt-4 grid grid-cols-2 gap-3">
+          <button onClick={() => (window.location.href = "/mapa")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">🗺️ Ver mapa</button>
+          <button onClick={() => (window.location.href = "/mis-reportes")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">📄 Mis reportes</button>
+        </section>
+
+        <footer className="py-8 text-center text-xs text-slate-600">ALERTA OTAMENDI · Comunidad conectada</footer>
       </div>
     </main>
   );

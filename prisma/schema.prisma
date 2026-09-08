@@ -12,24 +12,21 @@ model Report {
   description String
   status      String   @default("pendiente")
   latitude    Float?
-longitude   Float?
-imageUrl String?
-videoUrl    String?
-audioUrl    String?
+  longitude   Float?
+  imageUrl    String?
+  videoUrl    String?
+  audioUrl    String?
   createdAt   DateTime @default(now())
 }
+
 model PushSubscription {
   id        Int      @id @default(autoincrement())
-
   endpoint  String   @unique
   p256dh    String
   auth      String
-
   latitude  Float
   longitude Float
-
   enabled   Boolean  @default(true)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-} 
+}
