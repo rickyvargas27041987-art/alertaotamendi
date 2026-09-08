@@ -28,13 +28,14 @@ export default function AdminPage() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [showAllReports, setShowAllReports] = useState(false);
+  const [showCriticalPending, setShowCriticalPending] = useState(false);
   const [mapPeriod, setMapPeriod] = useState("24h");
   const [ultimaAlertaId, setUltimaAlertaId] = useState<number | null>(null);
 const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
   const [alertaCriticaRevisada, setAlertaCriticaRevisada] = useState(false);
   const [alertasCriticasPendientes, setAlertasCriticasPendientes] = useState<number[]>([]);
   async function loadReports() {
-    try { 
+    try {  
       const response = await fetch("/api/reports");
       const data = await response.json();
 
@@ -350,7 +351,10 @@ setAlertaCriticaRevisada(
 )} 
     {alertasCriticasPendientes.length > 0 && (
   <button
-    onClick={() => setShowAllReports(true)}
+   onClick={() => {
+  setShowCriticalPending(true);
+  setShowAllReports(true);
+}} 
     className="mt-3 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-500"
   >
     Ver pendientes
@@ -596,7 +600,10 @@ if (ca !== cb) return ca - cb;
   </div>
 </section>
         <button
-  onClick={() => setShowAllReports(!showAllReports)}
+  onClick={() => {
+  setShowCriticalPending(false);
+  setShowAllReports(!showAllReports);
+}} 
   className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold hover:bg-slate-800"
 >
   📋 {showAllReports
@@ -605,7 +612,13 @@ if (ca !== cb) return ca - cb;
 </button> 
        {showAllReports && (
   <section className="space-y-4">
-          {reports.map((report) => (
+        {reports
+  .filter((report) =>
+    showCriticalPending
+      ? alertasCriticasPendientes.includes(report.id)
+      : true
+  )
+  .map((report) => ( 
             <article
               key={report.id}
               className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
