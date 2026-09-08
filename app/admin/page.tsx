@@ -417,7 +417,7 @@ setAlertaCriticaRevisada(
         </header>
             <section className="mb-6 rounded-3xl border border-red-500/20 bg-slate-900 p-4">
   <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-lg font-bold">🚨 🚨 Atención prioritaria
+    <h2 className="text-lg font-bold">🚨 Atención prioritaria</h2>
     <span className="text-xs text-slate-400">Últimas 3</span>
   </div>
 
