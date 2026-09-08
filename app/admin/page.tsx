@@ -348,6 +348,14 @@ setAlertaCriticaRevisada(
     {alertasCriticasPendientes.length} sin revisar
   </p>
 )} 
+    {alertasCriticasPendientes.length > 0 && (
+  <button
+    onClick={() => setShowAllReports(true)}
+    className="mt-3 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-500"
+  >
+    Ver pendientes
+  </button>
+)} 
     {!alertaCriticaRevisada && criticalAlerts > 0 && (
   <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white animate-pulse">
     🔴 SIN REVISAR
