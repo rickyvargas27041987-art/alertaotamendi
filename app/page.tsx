@@ -289,6 +289,8 @@ export default function Home() {
   useEffect(() => {
     if (!notificationsEnabled || latitude === null || longitude === null) return;
 
+    const currentLatitude = latitude;
+    const currentLongitude = longitude;
     let active = true;
 
     async function checkNearbyAlerts() {
@@ -316,8 +318,8 @@ export default function Home() {
           }
 
           const distance = calcularDistanciaKm(
-            latitude,
-            longitude,
+            currentLatitude,
+            currentLongitude,
             report.latitude,
             report.longitude
           );
