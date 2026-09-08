@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [ultimaAlertaId, setUltimaAlertaId] = useState<number | null>(null);
 const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
   const [alertaCriticaRevisada, setAlertaCriticaRevisada] = useState(false);
+  const [alertasCriticasPendientes, setAlertasCriticasPendientes] = useState<number[]>([]);
   async function loadReports() {
     try { 
       const response = await fetch("/api/reports");
@@ -56,6 +57,11 @@ const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
   ) {
     setAlertaCriticaRevisada(false);
   }
+   setAlertasCriticasPendientes((prev) =>
+  prev.includes(masReciente.id)
+    ? prev
+    : [...prev, masReciente.id]
+);
 }
 
     setUltimaAlertaId(masReciente.id);
@@ -311,7 +317,13 @@ const mapReports = reports.filter((report) => {
     alertaNueva.category === "Emergencia" ||
     alertaNueva.category === "Delito / Robo"
   ) {
-    setAlertaCriticaRevisada(true);
+    setAlertasCriticasPendientes((prev) =>
+  prev.filter((id) => id !== alertaNueva.id)
+);
+
+setAlertaCriticaRevisada(
+  alertasCriticasPendientes.filter((id) => id !== alertaNueva.id).length === 0
+);
   }
 
   setAlertaNueva(null);
