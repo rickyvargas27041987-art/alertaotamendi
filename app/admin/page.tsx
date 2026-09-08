@@ -411,10 +411,78 @@ setAlertaCriticaRevisada(
           <button
   onClick={handleLogout}
   className="ml-3 rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold hover:bg-red-700"
->
+> 
   🚪 Cerrar sesión
 </button>
         </header>
+            <section className="mb-6 rounded-3xl border border-red-500/20 bg-slate-900 p-4">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-lg font-bold">🚨 🚨 Atención prioritaria
+    <span className="text-xs text-slate-400">Últimas 3</span>
+  </div>
+
+  <div className="space-y-2">
+    {[...reports]
+  .sort((a, b) => {
+    const prioridad = {
+      pendiente: 1,
+      en_analisis: 2,
+      verificada: 3,
+      resuelta: 4,
+      descartada: 5,
+    };
+const prioridadCategoria = {
+  Emergencia: 1,
+  "Delito / Robo": 2,
+  Accidente: 3,
+  Incendio: 4,
+  "Vehículo sospechoso": 5,
+  "Persona sospechosa": 6,
+}; 
+    const pa = prioridad[a.status as keyof typeof prioridad] ?? 99;
+    const pb = prioridad[b.status as keyof typeof prioridad] ?? 99;
+
+    if (pa !== pb) return pa - pb;
+const ca =
+  prioridadCategoria[a.category as keyof typeof prioridadCategoria] ?? 99;
+
+const cb =
+  prioridadCategoria[b.category as keyof typeof prioridadCategoria] ?? 99;
+
+if (ca !== cb) return ca - cb; 
+    return (  
+      new Date(b.createdAt).getTime() -
+      new Date(a.createdAt).getTime()
+    );
+  }) 
+  .slice(0, 3)
+  .map((report) => (
+      <button
+        key={`destacada-${report.id}`}
+        onClick={() => setSelectedReport(report)}
+        className="flex w-full items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left hover:bg-slate-800"
+      >
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">#{report.id}</span>
+            <span className="font-semibold">{report.category}</span>
+          </div>
+
+          <p className="mt-1 text-xs text-slate-400">
+            {formatDate(report.createdAt)}
+          </p>
+        </div>
+
+        <div className="text-right">
+          <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs">
+            {statusLabel(report.status)}
+          </span>
+          <p className="mt-2 text-xs text-slate-500">Ver detalle ›</p>
+        </div>
+      </button>
+    ))}
+  </div> 
+</section>
         <section className="mb-8">
   <h2 className="mb-4 text-xl font-bold">
     🗺️ Mapa de alertas
@@ -531,81 +599,14 @@ setAlertaCriticaRevisada(
     </p>
   </div>
 </div>  
-        <section className="mb-6 rounded-3xl border border-red-500/20 bg-slate-900 p-4">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-lg font-bold">🚨 Alertas destacadas</h2>
-    <span className="text-xs text-slate-400">Últimas 3</span>
-  </div>
-
-  <div className="space-y-2">
-    {[...reports]
-  .sort((a, b) => {
-    const prioridad = {
-      pendiente: 1,
-      en_analisis: 2,
-      verificada: 3,
-      resuelta: 4,
-      descartada: 5,
-    };
-const prioridadCategoria = {
-  Emergencia: 1,
-  "Delito / Robo": 2,
-  Accidente: 3,
-  Incendio: 4,
-  "Vehículo sospechoso": 5,
-  "Persona sospechosa": 6,
-}; 
-    const pa = prioridad[a.status as keyof typeof prioridad] ?? 99;
-    const pb = prioridad[b.status as keyof typeof prioridad] ?? 99;
-
-    if (pa !== pb) return pa - pb;
-const ca =
-  prioridadCategoria[a.category as keyof typeof prioridadCategoria] ?? 99;
-
-const cb =
-  prioridadCategoria[b.category as keyof typeof prioridadCategoria] ?? 99;
-
-if (ca !== cb) return ca - cb; 
-    return (  
-      new Date(b.createdAt).getTime() -
-      new Date(a.createdAt).getTime()
-    );
-  }) 
-  .slice(0, 3)
-  .map((report) => (
-      <button
-        key={`destacada-${report.id}`}
-        onClick={() => setSelectedReport(report)}
-        className="flex w-full items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left hover:bg-slate-800"
-      >
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">#{report.id}</span>
-            <span className="font-semibold">{report.category}</span>
-          </div>
-
-          <p className="mt-1 text-xs text-slate-400">
-            {formatDate(report.createdAt)}
-          </p>
-        </div>
-
-        <div className="text-right">
-          <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs">
-            {statusLabel(report.status)}
-          </span>
-          <p className="mt-2 text-xs text-slate-500">Ver detalle ›</p>
-        </div>
-      </button>
-    ))}
-  </div>
-</section>
+   
         <button
   onClick={() => {
   setShowCriticalPending(false);
   setShowAllReports(!showAllReports);
 }} 
   className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold hover:bg-slate-800"
->
+> 
   📋 {showAllReports
     ? "Ocultar todas las alertas"
     : `Ver todas las alertas (${reports.length})`}
