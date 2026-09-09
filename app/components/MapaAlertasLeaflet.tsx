@@ -51,6 +51,18 @@ type UserPosition = {
   longitude: number;
 };
 
+type Provincia = { id: string; nombre: string };
+type Localidad = {
+  id: string;
+  nombre: string;
+  centroide: { lat: number; lon: number };
+};
+type AdminSelectedLocation = {
+  latitude: number;
+  longitude: number;
+  label: string;
+} | null;
+
 /* =========================================================
    CONFIGURACIÓN GENERAL
 ========================================================= */
@@ -387,9 +399,13 @@ function relativeTime(date: string) {
 function AdminViewport({
   reports,
   resetKey,
+  selectedLocation,
+  locationKey,
 }: {
   reports: Report[];
   resetKey: number;
+  selectedLocation: AdminSelectedLocation;
+  locationKey: number;
 }) {
   const map = useMap();
 
@@ -402,6 +418,15 @@ function AdminViewport({
 
     const timer = window.setTimeout(() => {
       map.invalidateSize();
+
+      if (selectedLocation) {
+        map.setView(
+          [selectedLocation.latitude, selectedLocation.longitude],
+          14,
+          { animate: true }
+        );
+        return;
+      }
 
       if (validReports.length === 0) {
         map.setView(
@@ -453,6 +478,8 @@ function AdminViewport({
     map,
     reports,
     resetKey,
+    selectedLocation,
+    locationKey,
   ]);
 
   return null;
@@ -558,6 +585,15 @@ export default function MapaAlertasLeaflet({
     setLocationMessage,
   ] = useState("");
 
+  const [provincias, setProvincias] = useState<Provincia[]>([]);
+  const [provinciaId, setProvinciaId] = useState("");
+  const [localidades, setLocalidades] = useState<Localidad[]>([]);
+  const [localidadId, setLocalidadId] = useState("");
+  const [loadingProvincias, setLoadingProvincias] = useState(false);
+  const [loadingLocalidades, setLoadingLocalidades] = useState(false);
+  const [adminSelectedLocation, setAdminSelectedLocation] = useState<AdminSelectedLocation>(null);
+  const [adminLocationKey, setAdminLocationKey] = useState(0);
+
   const mountedRef =
     useRef(true);
 
@@ -572,6 +608,68 @@ export default function MapaAlertasLeaflet({
       mountedRef.current = false;
     };
   }, []);
+
+  /* =======================================================
+     PROVINCIAS / LOCALIDADES - SOLO ADMIN
+  ======================================================= */
+
+  useEffect(() => {
+    if (mode !== "admin") return;
+
+    let cancelled = false;
+    setLoadingProvincias(true);
+
+    fetch("/api/georef?tipo=provincias", { cache: "force-cache" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled && data.success && Array.isArray(data.provincias)) {
+          setProvincias(data.provincias);
+        }
+      })
+      .catch((error) => console.error("Error cargando provincias:", error))
+      .finally(() => { if (!cancelled) setLoadingProvincias(false); });
+
+    return () => { cancelled = true; };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "admin" || !provinciaId) {
+      setLocalidades([]);
+      setLocalidadId("");
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingLocalidades(true);
+    setLocalidades([]);
+    setLocalidadId("");
+
+    fetch(`/api/georef?tipo=localidades&provincia=${encodeURIComponent(provinciaId)}`, { cache: "force-cache" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled && data.success && Array.isArray(data.localidades)) {
+          setLocalidades(data.localidades);
+        }
+      })
+      .catch((error) => console.error("Error cargando localidades:", error))
+      .finally(() => { if (!cancelled) setLoadingLocalidades(false); });
+
+    return () => { cancelled = true; };
+  }, [mode, provinciaId]);
+
+  function seleccionarLocalidad(id: string) {
+    setLocalidadId(id);
+    const localidad = localidades.find((item) => item.id === id);
+    const provincia = provincias.find((item) => item.id === provinciaId);
+    if (!localidad) return;
+
+    setAdminSelectedLocation({
+      latitude: localidad.centroide.lat,
+      longitude: localidad.centroide.lon,
+      label: `${localidad.nombre}${provincia ? `, ${provincia.nombre}` : ""}`,
+    });
+    setAdminLocationKey((value) => value + 1);
+  }
 
   /* =======================================================
      REPORTES FILTRADOS
@@ -830,6 +928,67 @@ export default function MapaAlertasLeaflet({
           </div>
         )}
 
+        {/* LOCALIDAD / PROVINCIA - SOLO CENTRO DE MONITOREO */}
+
+        {mode === "admin" && (
+          <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black text-white">📍 Buscar localidad</p>
+                <p className="mt-1 text-[10px] text-slate-500">Solo modifica la vista del Centro de Monitoreo.</p>
+              </div>
+              {adminSelectedLocation && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminSelectedLocation(null);
+                    setProvinciaId("");
+                    setLocalidadId("");
+                    setLocalidades([]);
+                    setResetKey((value) => value + 1);
+                  }}
+                  className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800"
+                >
+                  Ver alertas
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select
+                value={provinciaId}
+                onChange={(event) => {
+                  setProvinciaId(event.target.value);
+                  setAdminSelectedLocation(null);
+                }}
+                disabled={loadingProvincias}
+                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
+              >
+                <option value="">{loadingProvincias ? "Cargando provincias…" : "Seleccionar provincia"}</option>
+                {provincias.map((provincia) => (
+                  <option key={provincia.id} value={provincia.id}>{provincia.nombre}</option>
+                ))}
+              </select>
+
+              <select
+                value={localidadId}
+                onChange={(event) => seleccionarLocalidad(event.target.value)}
+                disabled={!provinciaId || loadingLocalidades}
+                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
+              >
+                <option value="">{loadingLocalidades ? "Cargando localidades…" : "Seleccionar localidad"}</option>
+                {localidades.map((localidad) => (
+                  <option key={localidad.id} value={localidad.id}>{localidad.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {adminSelectedLocation && (
+              <p className="mt-2 text-[11px] font-semibold text-emerald-400">✓ Mostrando {adminSelectedLocation.label}</p>
+            )}
+          </div>
+        )}
+
         {/* FILTROS */}
 
         <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
@@ -923,6 +1082,8 @@ export default function MapaAlertasLeaflet({
                 resetKey={
                   resetKey
                 }
+                selectedLocation={adminSelectedLocation}
+                locationKey={adminLocationKey}
               />
             ) : (
               <PublicViewport
