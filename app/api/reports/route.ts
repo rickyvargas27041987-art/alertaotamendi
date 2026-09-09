@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { calcularDistanciaKm, sendWebPush } from "@/lib/webPush";
+import {
+  calcularDistanciaKm,
+  sendWebPush,
+} from "@/lib/webPush";
+
+/* =========================================================
+   CONFIGURACIÓN
+========================================================= */
 
 const VALID_CATEGORIES = [
   "Delito / Robo",
@@ -12,274 +19,819 @@ const VALID_CATEGORIES = [
   "Emergencia",
 ] as const;
 
-const IMPORTANT_CATEGORIES = new Set([
-  "Delito / Robo",
-  "Accidente",
-  "Incendio",
-  "Emergencia",
-]);
+type ValidCategory =
+  (typeof VALID_CATEGORIES)[number];
+
+const PUSH_RADIUS_KM = 10;
+
+const CRITICAL_CATEGORIES =
+  new Set<string>([
+    "Delito / Robo",
+    "Emergencia",
+  ]);
+
+const HIGH_CATEGORIES =
+  new Set<string>([
+    "Accidente",
+    "Incendio",
+  ]);
+
+const VALID_STATUSES = [
+  "pendiente",
+  "en_analisis",
+  "verificada",
+  "resuelta",
+  "descartada",
+] as const;
+
+/* =========================================================
+   ADMIN
+========================================================= */
 
 async function isAdminAuthenticated() {
-  const adminSessionSecret = process.env.ADMIN_SESSION_SECRET;
-  if (!adminSessionSecret) return false;
+  const adminSessionSecret =
+    process.env.ADMIN_SESSION_SECRET;
+
+  if (!adminSessionSecret) {
+    return false;
+  }
 
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === adminSessionSecret;
+
+  return (
+    cookieStore.get("admin_session")
+      ?.value === adminSessionSecret
+  );
 }
 
-function roundPublicCoordinate(value: number | null) {
-  if (value === null) return null;
+/* =========================================================
+   PRIVACIDAD MAPA PÚBLICO
+========================================================= */
+
+function roundPublicCoordinate(
+  value: number | null
+) {
+  if (value === null) {
+    return null;
+  }
+
+  /*
+   * Aproximamos las coordenadas públicas.
+   * El administrador conserva la ubicación exacta.
+   */
   return Math.round(value * 1000) / 1000;
 }
 
-async function notifyImportantNearbyReport(report: {
-  id: number;
-  category: string;
-  latitude: number | null;
-  longitude: number | null;
-}) {
+/* =========================================================
+   PRIORIDAD PUSH
+========================================================= */
+
+function getPushPriority(
+  category: string
+): "critical" | "high" | "normal" {
   if (
-    !IMPORTANT_CATEGORIES.has(report.category) ||
+    CRITICAL_CATEGORIES.has(category)
+  ) {
+    return "critical";
+  }
+
+  if (
+    HIGH_CATEGORIES.has(category)
+  ) {
+    return "high";
+  }
+
+  return "normal";
+}
+
+/* =========================================================
+   TÍTULO PUSH
+========================================================= */
+
+function getPushTitle(
+  category: string,
+  priority:
+    | "critical"
+    | "high"
+    | "normal"
+) {
+  if (priority === "critical") {
+    return "🚨 Alerta importante cerca tuyo";
+  }
+
+  if (priority === "high") {
+    return "⚠️ Alerta cercana";
+  }
+
+  if (
+    category ===
+    "Persona sospechosa"
+  ) {
+    return "👤 Aviso cerca tuyo";
+  }
+
+  if (
+    category ===
+    "Vehículo sospechoso"
+  ) {
+    return "🚗 Aviso cerca tuyo";
+  }
+
+  return "📍 Alerta cercana";
+}
+
+/* =========================================================
+   NOTIFICAR DISPOSITIVOS CERCANOS
+========================================================= */
+
+async function notifyNearbyReport(
+  report: {
+    id: number;
+    category: string;
+    latitude: number | null;
+    longitude: number | null;
+  }
+) {
+  if (
     report.latitude === null ||
     report.longitude === null
   ) {
+    console.warn(
+      `Reporte #${report.id} sin ubicación. No se envían notificaciones.`
+    );
+
     return;
   }
 
   try {
-    const subscriptions = await prisma.pushSubscription.findMany({
-      where: { enabled: true },
-    });
-
-    const nearby = subscriptions
-      .map((subscription) => ({
-        subscription,
-        distance: calcularDistanciaKm(
-          subscription.latitude,
-          subscription.longitude,
-          report.latitude!,
-          report.longitude!
-        ),
-      }))
-      .filter(({ distance }) => distance <= 10);
-
-    const priority =
-      report.category === "Emergencia" || report.category === "Delito / Robo"
-        ? "critical"
-        : "high";
-
-    const results = await Promise.allSettled(
-      nearby.map(async ({ subscription, distance }) => {
-        const result = await sendWebPush(
-          {
-            endpoint: subscription.endpoint,
-            p256dh: subscription.p256dh,
-            auth: subscription.auth,
+    /*
+     * Buscamos solamente dispositivos
+     * que tienen las alertas activadas.
+     */
+    const subscriptions =
+      await prisma.pushSubscription.findMany(
+        {
+          where: {
+            enabled: true,
           },
-          {
-            title:
-              priority === "critical"
-                ? "🚨 Alerta importante cerca tuyo"
-                : "⚠️ Alerta cercana",
-            body: `${report.category} reportado a ${distance.toFixed(1)} km de tu ubicación.`,
-            url: "/mapa",
-            tag: `report-${report.id}`,
-            reportId: report.id,
-            priority,
-          }
-        );
-
-        if (result.status === 404 || result.status === 410) {
-          await prisma.pushSubscription.update({
-            where: { id: subscription.id },
-            data: { enabled: false },
-          });
         }
+      );
 
-        if (!result.ok && result.status !== 404 && result.status !== 410) {
-          console.warn("Push rechazado:", result.status, result.text);
-        }
-      })
+    console.log(
+      `[PUSH] Reporte #${report.id}: ${subscriptions.length} suscripciones activas.`
     );
 
-    const rejected = results.filter((result) => result.status === "rejected");
-    if (rejected.length > 0) {
-      console.warn(`Fallaron ${rejected.length} notificaciones push.`);
+    if (
+      subscriptions.length === 0
+    ) {
+      console.log(
+        `[PUSH] No hay dispositivos suscriptos.`
+      );
+
+      return;
     }
+
+    /*
+     * Calculamos distancia real mediante
+     * la fórmula Haversine.
+     */ 
+    const nearby =
+      subscriptions
+        .map(
+          (subscription) => {
+            const distance =
+              calcularDistanciaKm(
+                subscription.latitude,
+                subscription.longitude,
+                report.latitude!,
+                report.longitude!
+              );
+
+            return {
+              subscription,
+              distance,
+            };
+          }
+        )
+        .filter(
+          ({ distance }) =>
+            Number.isFinite(
+              distance
+            ) &&
+            distance <=
+              PUSH_RADIUS_KM
+        );
+
+    console.log(
+      `[PUSH] ${nearby.length} de ${subscriptions.length} dispositivos están dentro de ${PUSH_RADIUS_KM} km.`
+    );
+
+    if (nearby.length === 0) {
+      return;
+    }
+
+    const priority =
+      getPushPriority(
+        report.category
+      );
+
+    const title =
+      getPushTitle(
+        report.category,
+        priority
+      );
+
+    /*
+     * Enviamos una notificación
+     * independiente a cada dispositivo.
+     *
+     * Cada envío tiene su propio try/catch,
+     * por lo que una suscripción rota
+     * no interrumpe las demás.
+     */
+    const results =
+      await Promise.all(
+        nearby.map(
+          async ({
+            subscription,
+            distance,
+          }) => {
+            try {
+              const result =
+                await sendWebPush(
+                  {
+                    endpoint:
+                      subscription.endpoint,
+
+                    p256dh:
+                      subscription.p256dh,
+
+                    auth:
+                      subscription.auth,
+                  },
+
+                  {
+                    title,
+
+                    body:
+                      `${report.category} reportado a aproximadamente ${distance.toFixed(
+                        1
+                      )} km de tu ubicación.`,
+
+                    url: "/mapa",
+
+                    tag:
+                      `report-${report.id}`,
+
+                    reportId:
+                      report.id,
+
+                    priority,
+                  }
+                );
+
+              /*
+               * 404 y 410:
+               * la suscripción ya no existe
+               * en el proveedor Push.
+               */
+              if (
+                result.status ===
+                  404 ||
+                result.status ===
+                  410
+              ) {
+                console.warn(
+                  `[PUSH] Suscripción ${subscription.id} vencida (${result.status}). Se desactiva.`
+                );
+
+                await prisma
+                  .pushSubscription
+                  .update({
+                    where: {
+                      id:
+                        subscription.id,
+                    },
+
+                    data: {
+                      enabled:
+                        false,
+                    },
+                  });
+
+                return {
+                  ok: false,
+                  expired: true,
+                  status:
+                    result.status,
+                };
+              }
+
+              /*
+               * Cualquier otro rechazo
+               * queda visible en Vercel Logs.
+               */
+              if (!result.ok) {
+                console.error(
+                  `[PUSH] ERROR suscripción ${subscription.id}: status=${result.status}`,
+                  result.text
+                );
+
+                return {
+                  ok: false,
+                  expired: false,
+                  status:
+                    result.status,
+                };
+              }
+
+              console.log(
+                `[PUSH] OK → dispositivo ${subscription.id} (${distance.toFixed(
+                  1
+                )} km). Status ${result.status}.`
+              );
+
+              return {
+                ok: true,
+                expired: false,
+                status:
+                  result.status,
+              };
+            } catch (
+              error
+            ) {
+              /*
+               * Este catch es MUY importante.
+               *
+               * También captura errores
+               * producidos antes de contactar
+               * al proveedor Web Push,
+               * por ejemplo configuración VAPID.
+               */
+              console.error(
+                `[PUSH] EXCEPCIÓN dispositivo ${subscription.id}:`,
+                error
+              );
+
+              return {
+                ok: false,
+                expired: false,
+                status: 500,
+              };
+            }
+          }
+        )
+      );
+
+    const success =
+      results.filter(
+        (result) => result.ok
+      ).length;
+
+    const expired =
+      results.filter(
+        (result) =>
+          result.expired
+      ).length;
+
+    const failed =
+      results.length -
+      success -
+      expired;
+
+    console.log(
+      `[PUSH] Resultado reporte #${report.id}: ${success} enviados, ${failed} fallidos, ${expired} vencidos.`
+    );
   } catch (error) {
-    console.error("Error enviando notificaciones cercanas:", error);
+    console.error(
+      `[PUSH] Error general notificando reporte #${report.id}:`,
+      error
+    );
   }
 }
+
+/* =========================================================
+   GET
+   ADMIN: información completa
+   PÚBLICO: información protegida
+========================================================= */
 
 export async function GET() {
   try {
-    if (await isAdminAuthenticated()) {
-      const reports = await prisma.report.findMany({
-        orderBy: { createdAt: "desc" },
-      });
+    /*
+     * ADMINISTRADOR
+     */
+    if (
+      await isAdminAuthenticated()
+    ) {
+      const reports =
+        await prisma.report.findMany(
+          {
+            orderBy: {
+              createdAt: "desc",
+            },
+          }
+        );
 
-      return NextResponse.json({
-        success: true,
-        total: reports.length,
-        reports,
-      });
+      return NextResponse.json(
+        {
+          success: true,
+          total:
+            reports.length,
+          reports,
+        }
+      );
     }
 
-    const reports = await prisma.report.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        category: true,
-        status: true,
-        latitude: true,
-        longitude: true,
-        createdAt: true,
-      },
-      take: 500,
-    });
+    /*
+     * PÚBLICO
+     *
+     * No enviamos descripción,
+     * fotografías, video ni audio.
+     */
+    const reports =
+      await prisma.report.findMany(
+        {
+          orderBy: {
+            createdAt: "desc",
+          },
 
-    const publicReports = reports.map((report) => ({
-      ...report,
-      latitude: roundPublicCoordinate(report.latitude),
-      longitude: roundPublicCoordinate(report.longitude),
-    }));
+          select: {
+            id: true,
+            category: true,
+            status: true,
+            latitude: true,
+            longitude: true,
+            createdAt: true,
+          },
+
+          take: 500,
+        }
+      );
+
+    const publicReports =
+      reports.map(
+        (report) => ({
+          ...report,
+
+          latitude:
+            roundPublicCoordinate(
+              report.latitude
+            ),
+
+          longitude:
+            roundPublicCoordinate(
+              report.longitude
+            ),
+        })
+      );
 
     return NextResponse.json({
       success: true,
-      total: publicReports.length,
-      reports: publicReports,
+      total:
+        publicReports.length,
+      reports:
+        publicReports,
     });
   } catch (error) {
-    console.error("Error al obtener reportes:", error);
+    console.error(
+      "Error al obtener reportes:",
+      error
+    );
+
     return NextResponse.json(
-      { success: false, message: "Error al obtener los reportes." },
-      { status: 500 }
+      {
+        success: false,
+        message:
+          "Error al obtener los reportes.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
 
-export async function POST(request: Request) {
+/* =========================================================
+   POST
+   CREAR NUEVA ALERTA
+========================================================= */
+
+export async function POST(
+  request: Request
+) {
   try {
-    const body = await request.json();
+    const body =
+      await request.json();
 
-    const category = typeof body.category === "string" ? body.category : "";
-    const description = typeof body.description === "string" ? body.description.trim() : "";
-    const latitude = body.latitude === null ? null : Number(body.latitude);
-    const longitude = body.longitude === null ? null : Number(body.longitude);
-    const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl : null;
-    const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : null;
-    const audioUrl = typeof body.audioUrl === "string" ? body.audioUrl : null;
+    const category =
+      typeof body.category ===
+      "string"
+        ? body.category.trim()
+        : "";
 
-    if (!VALID_CATEGORIES.includes(category as (typeof VALID_CATEGORIES)[number])) {
+    const description =
+      typeof body.description ===
+      "string"
+        ? body.description.trim()
+        : "";
+
+    const latitude =
+      body.latitude === null ||
+      body.latitude ===
+        undefined
+        ? null
+        : Number(
+            body.latitude
+          );
+
+    const longitude =
+      body.longitude === null ||
+      body.longitude ===
+        undefined
+        ? null
+        : Number(
+            body.longitude
+          );
+
+    const imageUrl =
+      typeof body.imageUrl ===
+        "string" &&
+      body.imageUrl.trim()
+        ? body.imageUrl.trim()
+        : null;
+
+    const videoUrl =
+      typeof body.videoUrl ===
+        "string" &&
+      body.videoUrl.trim()
+        ? body.videoUrl.trim()
+        : null;
+
+    const audioUrl =
+      typeof body.audioUrl ===
+        "string" &&
+      body.audioUrl.trim()
+        ? body.audioUrl.trim()
+        : null;
+
+    /* -----------------------------------------------------
+       VALIDACIÓN CATEGORÍA
+    ----------------------------------------------------- */
+
+    if (
+      !VALID_CATEGORIES.includes(
+        category as ValidCategory
+      )
+    ) {
       return NextResponse.json(
-        { success: false, message: "Categoría inválida." },
-        { status: 400 }
+        {
+          success: false,
+          message:
+            "Categoría inválida.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    if (description.length < 3 || description.length > 1000) {
+    /* -----------------------------------------------------
+       VALIDACIÓN DESCRIPCIÓN
+    ----------------------------------------------------- */
+
+    if (
+      description.length < 3 ||
+      description.length >
+        1000
+    ) {
       return NextResponse.json(
-        { success: false, message: "La descripción debe tener entre 3 y 1000 caracteres." },
-        { status: 400 }
+        {
+          success: false,
+          message:
+            "La descripción debe tener entre 3 y 1000 caracteres.",
+        },
+        {
+          status: 400,
+        }
       );
     }
+
+    /* -----------------------------------------------------
+       VALIDACIÓN UBICACIÓN
+    ----------------------------------------------------- */
 
     if (
       latitude === null ||
       longitude === null ||
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude) ||
+      !Number.isFinite(
+        latitude
+      ) ||
+      !Number.isFinite(
+        longitude
+      ) ||
       latitude < -90 ||
       latitude > 90 ||
       longitude < -180 ||
       longitude > 180
     ) {
       return NextResponse.json(
-        { success: false, message: "Necesitamos una ubicación válida para enviar la alerta." },
-        { status: 400 }
+        {
+          success: false,
+
+          message:
+            "Necesitamos una ubicación válida para enviar la alerta.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const newReport = await prisma.report.create({
-      data: {
-        category,
-        description,
-        status: "pendiente",
-        latitude,
-        longitude,
-        imageUrl,
-        videoUrl,
-        audioUrl,
-      },
-    });
+    /* -----------------------------------------------------
+       GUARDAR REPORTE
+    ----------------------------------------------------- */
 
-    await notifyImportantNearbyReport(newReport);
+    const newReport =
+      await prisma.report.create(
+        {
+          data: {
+            category,
+            description,
+
+            status:
+              "pendiente",
+
+            latitude,
+            longitude,
+
+            imageUrl,
+            videoUrl,
+            audioUrl,
+          },
+        }
+      );
+
+    console.log(
+      `[REPORT] Nueva alerta #${newReport.id} · ${newReport.category}`
+    );
+
+    /*
+     * Notificamos dispositivos dentro
+     * del radio de 10 km.
+     *
+     * Esperamos el resultado para que
+     * Vercel no finalice la función
+     * antes de terminar los pushes.
+     */
+    await notifyNearbyReport(
+      newReport
+    );
 
     return NextResponse.json(
       {
         success: true,
-        message: "Alerta recibida correctamente.",
+
+        message:
+          "Alerta recibida correctamente.",
+
         report: {
-          id: newReport.id,
-          category: newReport.category,
-          status: newReport.status,
-          createdAt: newReport.createdAt,
+          id:
+            newReport.id,
+
+          category:
+            newReport.category,
+
+          status:
+            newReport.status,
+
+          createdAt:
+            newReport.createdAt,
         },
       },
-      { status: 201 }
+      {
+        status: 201,
+      }
     );
   } catch (error) {
-    console.error("Error al guardar alerta:", error);
+    console.error(
+      "Error al guardar alerta:",
+      error
+    );
+
     return NextResponse.json(
-      { success: false, message: "Error al guardar la alerta." },
-      { status: 500 }
+      {
+        success: false,
+
+        message:
+          "Error al guardar la alerta.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
 
-export async function PATCH(request: Request) {
+/* =========================================================
+   PATCH
+   CAMBIAR ESTADO DE REPORTE
+========================================================= */
+
+export async function PATCH(
+  request: Request
+) {
   try {
-    if (!(await isAdminAuthenticated())) {
+    if (
+      !(
+        await isAdminAuthenticated()
+      )
+    ) {
       return NextResponse.json(
-        { success: false, message: "No autorizado." },
-        { status: 401 }
+        {
+          success: false,
+          message:
+            "No autorizado.",
+        },
+        {
+          status: 401,
+        }
       );
     }
 
-    const body = await request.json();
-    const id = Number(body.id);
-    const status = body.status;
+    const body =
+      await request.json();
 
-    const validStatuses = [
-      "pendiente",
-      "en_analisis",
-      "verificada",
-      "resuelta",
-      "descartada",
-    ];
+    const id =
+      Number(body.id);
 
-    if (!Number.isInteger(id) || id <= 0 || !validStatuses.includes(status)) {
+    const status =
+      typeof body.status ===
+      "string"
+        ? body.status
+        : "";
+
+    if (
+      !Number.isInteger(id) ||
+      id <= 0 ||
+      !VALID_STATUSES.includes(
+        status as
+          (typeof VALID_STATUSES)[number]
+      )
+    ) {
       return NextResponse.json(
-        { success: false, message: "ID o estado inválido." },
-        { status: 400 }
+        {
+          success: false,
+
+          message:
+            "ID o estado inválido.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const updatedReport = await prisma.report.update({
-      where: { id },
-      data: { status },
-    });
+    const updatedReport =
+      await prisma.report.update(
+        {
+          where: {
+            id,
+          },
 
-    return NextResponse.json({
-      success: true,
-      message: "Estado actualizado correctamente.",
-      report: updatedReport,
-    });
-  } catch (error) {
-    console.error("Error al actualizar estado:", error);
+          data: {
+            status,
+          },
+        }
+      );
+
     return NextResponse.json(
-      { success: false, message: "Error al actualizar el estado." },
-      { status: 500 }
+      {
+        success: true,
+
+        message:
+          "Estado actualizado correctamente.",
+
+        report:
+          updatedReport,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Error al actualizar estado:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+
+        message:
+          "Error al actualizar el estado.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
