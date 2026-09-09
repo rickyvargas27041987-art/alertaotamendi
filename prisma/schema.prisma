@@ -17,6 +17,16 @@ model Report {
   videoUrl    String?
   audioUrl    String?
   createdAt   DateTime @default(now())
+
+  // ANALISIS DE INTELIGENCIA ARTIFICIAL
+  aiAnalyzed      Boolean  @default(false)
+  aiCategory      String?
+  aiPriority      String?
+  aiSummary       String?
+  aiConfidence    Float?
+  aiPossibleSpam  Boolean?
+  aiReason        String?
+  aiAnalyzedAt    DateTime?
 }
 
 model PushSubscription {
