@@ -61,21 +61,20 @@ const OTAMENDI_CENTER: [number, number] = [
 ];
 
 /*
- * El mapa público arranca con una vista amplia.
- * Luego se centra automáticamente en el vecino.
+ * Vista pública:
+ * - Predeterminada: 2 km alrededor de Otamendi.
+ * - Al tocar "Mi ubicación": 200 m alrededor del usuario.
+ *
+ * Esto afecta solamente la cámara del mapa.
+ * NO modifica el radio de notificaciones push.
  */
-const PUBLIC_INITIAL_ZOOM = 12;
+const PUBLIC_DEFAULT_RADIUS_METERS = 2_000;
+const PUBLIC_USER_RADIUS_METERS = 200;
 
 /*
- * Radio visual del mapa comunitario.
- *
- * IMPORTANTE:
- * Esto NO define el radio de notificaciones push.
- *
- * Push = 10 km
- * Mapa visual = 15 km
+ * Círculo visual alrededor de la ubicación del usuario.
  */
-const PUBLIC_MAP_RADIUS_METERS = 15_000;
+const PUBLIC_MAP_RADIUS_METERS = 200;
 
 /*
  * Las alertas nuevas tienen animación durante 10 minutos.
@@ -473,26 +472,44 @@ function PublicViewport({
   const map = useMap();
 
   useEffect(() => {
-    if (!userPosition) {
-      return;
-    }
+    const timer = window.setTimeout(() => {
+      map.invalidateSize();
 
-    const timer =
-      window.setTimeout(() => {
-        map.invalidateSize();
+      /*
+       * Si todavía no se pidió la ubicación:
+       * mostramos una vista de aproximadamente
+       * 2 km a la redonda de Otamendi.
+       */
+      if (!userPosition) {
+        const defaultBounds = L.latLng(
+          OTAMENDI_CENTER[0],
+          OTAMENDI_CENTER[1]
+        ).toBounds(PUBLIC_DEFAULT_RADIUS_METERS * 2);
 
-        map.flyTo(
-          [
-            userPosition.latitude,
-            userPosition.longitude,
-          ],
-          PUBLIC_INITIAL_ZOOM,
-          {
-            animate: true,
-            duration: 0.8,
-          }
-        );
-      }, 100);
+        map.fitBounds(defaultBounds, {
+          padding: [24, 24],
+          animate: false,
+        });
+
+        return;
+      }
+
+      /*
+       * Cuando el vecino toca "Mi ubicación":
+       * mostramos aproximadamente 200 m
+       * a la redonda de su posición.
+       */
+      const userBounds = L.latLng(
+        userPosition.latitude,
+        userPosition.longitude
+      ).toBounds(PUBLIC_USER_RADIUS_METERS * 2);
+
+      map.fitBounds(userBounds, {
+        padding: [24, 24],
+        animate: true,
+        duration: 0.6,
+      });
+    }, 100);
 
     return () => {
       window.clearTimeout(timer);
@@ -534,9 +551,7 @@ export default function MapaAlertasLeaflet({
     );
 
   const [locating, setLocating] =
-    useState(
-      mode === "public"
-    );
+    useState(false);
 
   const [
     locationMessage,
@@ -714,20 +729,6 @@ export default function MapaAlertasLeaflet({
       [mode]
     );
 
-  /* =======================================================
-     UBICACIÓN AUTOMÁTICA
-  ======================================================= */
-
-  useEffect(() => {
-    if (mode !== "public") {
-      return;
-    }
-
-    requestUserLocation(true);
-  }, [
-    mode,
-    requestUserLocation,
-  ]);
 
   /* =======================================================
      RENDER
@@ -807,7 +808,7 @@ export default function MapaAlertasLeaflet({
                 {locating
                   ? "Buscando tu ubicación…"
                   : locationMessage ||
-                    "Mostrando alertas recientes alrededor de tu zona."}
+                    "Vista general de aproximadamente 2 km. Tocá «Mi ubicación» para ver 200 m a tu alrededor."}
               </p>
             </div>
 
@@ -896,7 +897,7 @@ export default function MapaAlertasLeaflet({
             }
             zoom={
               mode === "public"
-                ? PUBLIC_INITIAL_ZOOM
+                ? 14
                 : 14
             }
             style={{

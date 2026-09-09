@@ -22,7 +22,7 @@ const VALID_CATEGORIES = [
 type ValidCategory =
   (typeof VALID_CATEGORIES)[number];
 
-const PUSH_RADIUS_KM = 10;
+const PUSH_RADIUS_KM = 5;
 
 const CRITICAL_CATEGORIES =
   new Set<string>([
