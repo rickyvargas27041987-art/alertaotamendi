@@ -1,5 +1,57 @@
 import { NextResponse } from "next/server";
 
+type AiAnalysis = {
+  category:
+    | "Delito / Robo"
+    | "Persona sospechosa"
+    | "Vehículo sospechoso"
+    | "Accidente"
+    | "Incendio"
+    | "Emergencia";
+
+  priority:
+    | "critical"
+    | "high"
+    | "medium"
+    | "low";
+
+  summary: string;
+  confidence: number;
+  possibleSpam: boolean;
+  reason: string;
+};
+
+function findOutputText(data: any): string | null {
+  if (
+    typeof data?.output_text === "string" &&
+    data.output_text.trim()
+  ) {
+    return data.output_text.trim();
+  }
+
+  if (!Array.isArray(data?.output)) {
+    return null;
+  }
+
+  for (const item of data.output) {
+    if (!Array.isArray(item?.content)) {
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (
+        content?.type === "output_text" &&
+        typeof content?.text === "string" &&
+        content.text.trim()
+      ) {
+        return content.text.trim();
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -11,106 +63,219 @@ export async function POST(request: Request) {
       longitude,
     } = body;
 
-    if (!description) {
+    if (
+      typeof description !== "string" ||
+      description.trim().length < 3
+    ) {
       return NextResponse.json(
-        { error: "Falta la descripción del reporte" },
+        {
+          success: false,
+          error: "Falta una descripción válida.",
+        },
         { status: 400 }
       );
     }
+
+    const apiKey =
+      process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "OPENAI_API_KEY no está configurada.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const prompt = `
+Sos el sistema de inteligencia artificial de apoyo
+del Centro de Monitoreo de Alerta Otamendi.
+
+Analizás reportes enviados por vecinos.
+
+DATOS DEL REPORTE
+
+Categoría elegida:
+${category || "Sin categoría"}
+
+Descripción:
+${description.trim()}
+
+Ubicación:
+${
+  latitude !== null &&
+  latitude !== undefined &&
+  longitude !== null &&
+  longitude !== undefined
+    ? `Latitud ${latitude}, longitud ${longitude}`
+    : "No disponible"
+}
+
+REGLAS
+
+- No inventes información.
+- No afirmes como comprobado algo que solo fue reportado.
+- No identifiques ni acuses personas.
+- La decisión final siempre corresponde al operador humano.
+- possibleSpam solo debe ser true si hay señales claras
+  de prueba, texto absurdo, publicidad o contenido irrelevante.
+- confidence debe estar entre 0 y 1.
+`.trim();
 
     const response = await fetch(
       "https://api.openai.com/v1/responses",
       {
         method: "POST",
+
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          Authorization:
+            `Bearer ${apiKey}`,
+          "Content-Type":
+            "application/json",
         },
 
         body: JSON.stringify({
           model: "gpt-5.6-luna",
 
-          input: `
-Sos el sistema de inteligencia artificial del Centro de Monitoreo
-de Alerta Otamendi.
+          reasoning: {
+            effort: "none",
+          },
 
-Tu tarea es analizar reportes ciudadanos.
+          input: prompt,
 
-REPORTE:
+          text: {
+            format: {
+              type: "json_schema",
+              name:
+                "alerta_otamendi_analysis",
+              strict: true,
 
-Categoría seleccionada por el vecino:
-${category || "Sin categoría"}
+              schema: {
+                type: "object",
 
-Descripción:
-${description}
+                properties: {
+                  category: {
+                    type: "string",
+                    enum: [
+                      "Delito / Robo",
+                      "Persona sospechosa",
+                      "Vehículo sospechoso",
+                      "Accidente",
+                      "Incendio",
+                      "Emergencia",
+                    ],
+                  },
 
-Ubicación:
-Latitud: ${latitude ?? "No disponible"}
-Longitud: ${longitude ?? "No disponible"}
+                  priority: {
+                    type: "string",
+                    enum: [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low",
+                    ],
+                  },
 
-Analizá el reporte y respondé SOLAMENTE con JSON válido.
+                  summary: {
+                    type: "string",
+                  },
 
-Formato obligatorio:
+                  confidence: {
+                    type: "number",
+                    minimum: 0,
+                    maximum: 1,
+                  },
 
-{
-  "category": "categoria detectada",
-  "priority": "critica | alta | normal | baja",
-  "summary": "resumen breve para el operador",
-  "confidence": 0,
-  "possibleSpam": false,
-  "reason": "explicación breve"
-}
+                  possibleSpam: {
+                    type: "boolean",
+                  },
 
-Reglas:
+                  reason: {
+                    type: "string",
+                  },
+                },
 
-- No inventes hechos.
-- Si hay riesgo inmediato para personas, incendio, delito en curso
-  o emergencia grave, aumentá la prioridad.
-- Si el mensaje parece una prueba, broma, texto sin sentido,
-  publicidad o reporte claramente irrelevante, marcá possibleSpam true.
-- confidence debe ser un número entre 0 y 1.
-- No descartes automáticamente un reporte solamente porque esté mal escrito.
-- Ante dudas importantes, preferí revisión humana.
-`,
+                required: [
+                  "category",
+                  "priority",
+                  "summary",
+                  "confidence",
+                  "possibleSpam",
+                  "reason",
+                ],
+
+                additionalProperties:
+                  false,
+              },
+            },
+          },
         }),
       }
     );
 
+    const data =
+      await response.json();
+
     if (!response.ok) {
-      const error = await response.text();
-
-      console.error("OpenAI error:", error);
-
-      return NextResponse.json(
-        { error: "No se pudo analizar el reporte con IA" },
-        { status: 500 }
+      console.error(
+        "OpenAI API error:",
+        response.status,
+        data
       );
-    }
 
-    const data = await response.json();
-
-    const text =
-      data.output_text ||
-      data.output?.[0]?.content?.[0]?.text;
-
-    if (!text) {
-      return NextResponse.json(
-        { error: "La IA no devolvió un análisis" },
-        { status: 500 }
-      );
-    }
-
-    let analysis;
-
-    try {
-      analysis = JSON.parse(text);
-    } catch {
       return NextResponse.json(
         {
-          error: "La IA devolvió una respuesta inválida",
-          raw: text,
+          success: false,
+          error:
+            "OpenAI rechazó la solicitud.",
+          openAiStatus:
+            response.status,
         },
-        { status: 500 }
+        { status: 502 }
+      );
+    }
+
+    const outputText =
+      findOutputText(data);
+
+    if (!outputText) {
+      console.error(
+        "Respuesta OpenAI sin output_text:",
+        JSON.stringify(data)
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "La IA respondió, pero no encontramos el análisis.",
+        },
+        { status: 502 }
+      );
+    }
+
+    let analysis: AiAnalysis;
+
+    try {
+      analysis =
+        JSON.parse(outputText) as AiAnalysis;
+    } catch (error) {
+      console.error(
+        "JSON IA inválido:",
+        outputText,
+        error
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "No pudimos interpretar la respuesta de IA.",
+        },
+        { status: 502 }
       );
     }
 
@@ -119,10 +284,17 @@ Reglas:
       analysis,
     });
   } catch (error) {
-    console.error("AI analyze error:", error);
+    console.error(
+      "AI analyze error:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "Error interno analizando el reporte" },
+      {
+        success: false,
+        error:
+          "Error interno analizando el reporte.",
+      },
       { status: 500 }
     );
   }
