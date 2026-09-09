@@ -51,6 +51,20 @@ type UserPosition = {
   longitude: number;
 };
 
+type ProvinciaGeoref = {
+  id: string;
+  nombre: string;
+};
+
+type LocalidadGeoref = {
+  id: string;
+  nombre: string;
+  centroide: {
+    lat: number;
+    lon: number;
+  };
+};
+
 /* =========================================================
    CONFIGURACIÓN GENERAL
 ========================================================= */
@@ -80,6 +94,12 @@ const PUBLIC_MAP_RADIUS_METERS = 200;
  * Las alertas nuevas tienen animación durante 10 minutos.
  */
 const NEW_REPORT_MINUTES = 10;
+
+const GEOREF_BASE_URL =
+  "https://apis.datos.gob.ar/georef/api/v2.0";
+
+const DEFAULT_PROVINCIA_NAME = "Buenos Aires";
+const DEFAULT_LOCALIDAD_NAME = "Comandante Nicanor Otamendi";
 
 /* =========================================================
    CATEGORÍAS / MARCADORES
@@ -524,6 +544,43 @@ function PublicViewport({
 }
 
 /* =========================================================
+   VIEWPORT POR LOCALIDAD SELECCIONADA
+========================================================= */
+
+function LocalidadViewport({
+  localidad,
+  selectionKey,
+}: {
+  localidad: LocalidadGeoref | null;
+  selectionKey: number;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!localidad) return;
+
+    const lat = Number(localidad.centroide?.lat);
+    const lon = Number(localidad.centroide?.lon);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      map.invalidateSize();
+      map.flyTo([lat, lon], 14, {
+        animate: true,
+        duration: 0.8,
+      });
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [map, localidad, selectionKey]);
+
+  return null;
+}
+
+/* =========================================================
    COMPONENTE PRINCIPAL
 ========================================================= */
 
@@ -553,6 +610,33 @@ export default function MapaAlertasLeaflet({
   const [locating, setLocating] =
     useState(false);
 
+  const [provincias, setProvincias] =
+    useState<ProvinciaGeoref[]>([]);
+
+  const [localidades, setLocalidades] =
+    useState<LocalidadGeoref[]>([]);
+
+  const [provinciaId, setProvinciaId] =
+    useState("");
+
+  const [localidadId, setLocalidadId] =
+    useState("");
+
+  const [localidadSeleccionada, setLocalidadSeleccionada] =
+    useState<LocalidadGeoref | null>(null);
+
+  const [localidadKey, setLocalidadKey] =
+    useState(0);
+
+  const [cargandoProvincias, setCargandoProvincias] =
+    useState(true);
+
+  const [cargandoLocalidades, setCargandoLocalidades] =
+    useState(false);
+
+  const [georefError, setGeorefError] =
+    useState("");
+
   const [
     locationMessage,
     setLocationMessage,
@@ -572,6 +656,185 @@ export default function MapaAlertasLeaflet({
       mountedRef.current = false;
     };
   }, []);
+
+  /* =======================================================
+     PROVINCIAS Y LOCALIDADES DE ARGENTINA
+  ======================================================= */
+
+  useEffect(() => {
+    let activo = true;
+
+    async function cargarProvincias() {
+      setCargandoProvincias(true);
+      setGeorefError("");
+
+      try {
+        const response = await fetch(
+          `${GEOREF_BASE_URL}/provincias?max=100&orden=nombre`,
+          { cache: "force-cache" }
+        );
+
+        if (!response.ok) {
+          throw new Error("No se pudieron cargar las provincias.");
+        }
+
+        const data = await response.json();
+        const lista: ProvinciaGeoref[] =
+          Array.isArray(data.provincias) ? data.provincias : [];
+
+        lista.sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es")
+        );
+
+        if (!activo) return;
+
+        setProvincias(lista);
+
+        const guardada =
+          window.localStorage.getItem(
+            "alerta_otamendi_provincia"
+          );
+
+        const inicial =
+          lista.find((item) => item.id === guardada) ||
+          lista.find(
+            (item) =>
+              item.nombre.toLowerCase() ===
+              DEFAULT_PROVINCIA_NAME.toLowerCase()
+          );
+
+        if (inicial) {
+          setProvinciaId(inicial.id);
+        }
+      } catch (error) {
+        console.error("Error cargando provincias:", error);
+        if (activo) {
+          setGeorefError(
+            "No pudimos cargar las provincias. Podés seguir usando el mapa normalmente."
+          );
+        }
+      } finally {
+        if (activo) setCargandoProvincias(false);
+      }
+    }
+
+    void cargarProvincias();
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!provinciaId) {
+      setLocalidades([]);
+      setLocalidadId("");
+      setLocalidadSeleccionada(null);
+      return;
+    }
+
+    let activo = true;
+
+    async function cargarLocalidades() {
+      setCargandoLocalidades(true);
+      setGeorefError("");
+      setLocalidades([]);
+      setLocalidadId("");
+      setLocalidadSeleccionada(null);
+
+      try {
+        /*
+         * La descarga JSON del recurso devuelve el conjunto
+         * completo y luego filtramos por provincia en el cliente.
+         * Evita quedarnos cortos con el límite de resultados.
+         */
+        const response = await fetch(
+          `${GEOREF_BASE_URL}/localidades.json`,
+          { cache: "force-cache" }
+        );
+
+        if (!response.ok) {
+          throw new Error("No se pudieron cargar las localidades.");
+        }
+
+        const data = await response.json();
+        const todas = Array.isArray(data.localidades)
+          ? data.localidades
+          : [];
+
+        const lista: LocalidadGeoref[] = todas
+          .filter(
+            (item: {
+              provincia?: { id?: string };
+              centroide?: { lat?: number; lon?: number };
+            }) =>
+              item.provincia?.id === provinciaId &&
+              Number.isFinite(Number(item.centroide?.lat)) &&
+              Number.isFinite(Number(item.centroide?.lon))
+          )
+          .map(
+            (item: {
+              id: string;
+              nombre: string;
+              centroide: { lat: number; lon: number };
+            }) => ({
+              id: item.id,
+              nombre: item.nombre,
+              centroide: {
+                lat: Number(item.centroide.lat),
+                lon: Number(item.centroide.lon),
+              },
+            })
+          );
+
+        lista.sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es")
+        );
+
+        if (!activo) return;
+
+        setLocalidades(lista);
+        window.localStorage.setItem(
+          "alerta_otamendi_provincia",
+          provinciaId
+        );
+
+        const localidadGuardada =
+          window.localStorage.getItem(
+            `alerta_otamendi_localidad_${provinciaId}`
+          );
+
+        const inicial =
+          lista.find((item) => item.id === localidadGuardada) ||
+          lista.find(
+            (item) =>
+              item.nombre.toLowerCase() ===
+              DEFAULT_LOCALIDAD_NAME.toLowerCase()
+          );
+
+        if (inicial) {
+          setLocalidadId(inicial.id);
+          setLocalidadSeleccionada(inicial);
+          setLocalidadKey((value) => value + 1);
+        }
+      } catch (error) {
+        console.error("Error cargando localidades:", error);
+        if (activo) {
+          setGeorefError(
+            "No pudimos cargar las localidades. Podés seguir usando el mapa normalmente."
+          );
+        }
+      } finally {
+        if (activo) setCargandoLocalidades(false);
+      }
+    }
+
+    void cargarLocalidades();
+
+    return () => {
+      activo = false;
+    };
+  }, [provinciaId]);
 
   /* =======================================================
      REPORTES FILTRADOS
@@ -794,6 +1057,109 @@ export default function MapaAlertasLeaflet({
 
       <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-3 shadow-2xl shadow-black/10">
 
+        {/* NAVEGACIÓN POR PROVINCIA Y LOCALIDAD */}
+
+        <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+          <div className="mb-2">
+            <p className="text-xs font-black text-white">
+              🇦🇷 Ir a una localidad
+            </p>
+            <p className="mt-1 text-[11px] leading-4 text-slate-400">
+              Elegí una provincia y después una localidad para centrar el mapa.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Provincia
+              </span>
+
+              <select
+                value={provinciaId}
+                onChange={(event) => {
+                  setProvinciaId(event.target.value);
+                  setLocalidadId("");
+                  setLocalidadSeleccionada(null);
+                }}
+                disabled={cargandoProvincias}
+                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none transition focus:border-blue-500 disabled:opacity-50"
+              >
+                <option value="">
+                  {cargandoProvincias
+                    ? "Cargando provincias…"
+                    : "Seleccionar provincia"}
+                </option>
+
+                {provincias.map((provincia) => (
+                  <option
+                    key={provincia.id}
+                    value={provincia.id}
+                  >
+                    {provincia.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Localidad
+              </span>
+
+              <select
+                value={localidadId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setLocalidadId(nextId);
+
+                  const localidad =
+                    localidades.find(
+                      (item) => item.id === nextId
+                    ) || null;
+
+                  setLocalidadSeleccionada(localidad);
+
+                  if (localidad) {
+                    window.localStorage.setItem(
+                      `alerta_otamendi_localidad_${provinciaId}`,
+                      localidad.id
+                    );
+                    setLocalidadKey((value) => value + 1);
+                  }
+                }}
+                disabled={
+                  !provinciaId ||
+                  cargandoLocalidades ||
+                  localidades.length === 0
+                }
+                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none transition focus:border-blue-500 disabled:opacity-50"
+              >
+                <option value="">
+                  {cargandoLocalidades
+                    ? "Cargando localidades…"
+                    : "Seleccionar localidad"}
+                </option>
+
+                {localidades.map((localidad) => (
+                  <option
+                    key={localidad.id}
+                    value={localidad.id}
+                  >
+                    {localidad.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {georefError && (
+            <p className="mt-2 text-[10px] leading-4 text-amber-300">
+              ⚠️ {georefError}
+            </p>
+          )}
+        </div>
+
         {/* UBICACIÓN DEL USUARIO */}
 
         {mode === "public" && (
@@ -912,6 +1278,15 @@ export default function MapaAlertasLeaflet({
               attribution="&copy; OpenStreetMap contributors"
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+
+            {/* LOCALIDAD SELECCIONADA */}
+
+            {localidadSeleccionada && (
+              <LocalidadViewport
+                localidad={localidadSeleccionada}
+                selectionKey={localidadKey}
+              />
+            )}
 
             {/* CONTROL DE CÁMARA */}
 
