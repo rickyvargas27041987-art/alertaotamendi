@@ -662,6 +662,10 @@ export default function MapaAlertasLeaflet({
   ======================================================= */
 
   useEffect(() => {
+    if (mode !== "admin") {
+      return;
+    }
+
     let activo = true;
 
     async function cargarProvincias() {
@@ -723,9 +727,13 @@ export default function MapaAlertasLeaflet({
     return () => {
       activo = false;
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
+    if (mode !== "admin") {
+      return;
+    }
+
     if (!provinciaId) {
       setLocalidades([]);
       setLocalidadId("");
@@ -834,7 +842,7 @@ export default function MapaAlertasLeaflet({
     return () => {
       activo = false;
     };
-  }, [provinciaId]);
+  }, [mode, provinciaId]);
 
   /* =======================================================
      REPORTES FILTRADOS
@@ -1057,8 +1065,9 @@ export default function MapaAlertasLeaflet({
 
       <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-3 shadow-2xl shadow-black/10">
 
-        {/* NAVEGACIÓN POR PROVINCIA Y LOCALIDAD */}
+        {/* NAVEGACIÓN POR PROVINCIA Y LOCALIDAD - SOLO ADMIN */}
 
+        {mode === "admin" && (
         <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950 p-3">
           <div className="mb-2">
             <p className="text-xs font-black text-white">
@@ -1159,6 +1168,7 @@ export default function MapaAlertasLeaflet({
             </p>
           )}
         </div>
+        )}
 
         {/* UBICACIÓN DEL USUARIO */}
 
@@ -1281,7 +1291,7 @@ export default function MapaAlertasLeaflet({
 
             {/* LOCALIDAD SELECCIONADA */}
 
-            {localidadSeleccionada && (
+            {mode === "admin" && localidadSeleccionada && (
               <LocalidadViewport
                 localidad={localidadSeleccionada}
                 selectionKey={localidadKey}
