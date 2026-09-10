@@ -90,6 +90,8 @@ const PUBLIC_USER_RADIUS_METERS = 200;
  */
 const PUBLIC_MAP_RADIUS_METERS = 200;
 
+const ADMIN_LAST_LOCATION_STORAGE_KEY = "alerta_otamendi_admin_last_location";
+
 /*
  * Las alertas nuevas tienen animación durante 10 minutos.
  */
@@ -614,6 +616,8 @@ export default function MapaAlertasLeaflet({
   const [adminSelectedLocation, setAdminSelectedLocation] = useState<AdminSelectedLocation>(null);
   const [adminLocationKey, setAdminLocationKey] = useState(0);
 
+  const pendingAdminLocalityIdRef = useRef<string | null>(null);
+
   const mountedRef =
     useRef(true);
 
@@ -628,6 +632,64 @@ export default function MapaAlertasLeaflet({
       mountedRef.current = false;
     };
   }, []);
+
+  /* =======================================================
+     RECORDAR ÚLTIMA PROVINCIA / LOCALIDAD - SOLO ADMIN
+  ======================================================= */
+
+  useEffect(() => {
+    if (mode !== "admin" || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(
+        ADMIN_LAST_LOCATION_STORAGE_KEY
+      );
+
+      if (!raw) {
+        return;
+      }
+
+      const saved = JSON.parse(raw) as {
+        provinciaId?: string;
+        localidadId?: string;
+        latitude?: number;
+        longitude?: number;
+        label?: string;
+      };
+
+      if (saved.provinciaId) {
+        setProvinciaId(saved.provinciaId);
+      }
+
+      if (saved.localidadId) {
+        pendingAdminLocalityIdRef.current =
+          saved.localidadId;
+      }
+
+      if (
+        typeof saved.latitude === "number" &&
+        typeof saved.longitude === "number" &&
+        typeof saved.label === "string"
+      ) {
+        setAdminSelectedLocation({
+          latitude: saved.latitude,
+          longitude: saved.longitude,
+          label: saved.label,
+        });
+
+        setAdminLocationKey(
+          (value) => value + 1
+        );
+      }
+    } catch (error) {
+      console.error(
+        "No se pudo recuperar la última localidad del Centro de Monitoreo:",
+        error
+      );
+    }
+  }, [mode]);
 
   /* =======================================================
      PROVINCIAS / LOCALIDADES - SOLO ADMIN
@@ -648,21 +710,70 @@ export default function MapaAlertasLeaflet({
     );
 
     setLocalidades(lista);
-    setLocalidadId("");
+
+    const pendingLocalityId =
+      pendingAdminLocalityIdRef.current;
+
+    if (
+      pendingLocalityId &&
+      lista.some(
+        (item) => item.id === pendingLocalityId
+      )
+    ) {
+      setLocalidadId(pendingLocalityId);
+      pendingAdminLocalityIdRef.current = null;
+    } else {
+      setLocalidadId("");
+    }
   }, [mode, provinciaId]);
 
   function seleccionarLocalidad(id: string) {
     setLocalidadId(id);
-    const localidad = localidades.find((item) => item.id === id);
-    const provincia = provincias.find((item) => item.id === provinciaId);
-    if (!localidad) return;
+
+    const localidad =
+      localidades.find(
+        (item) => item.id === id
+      );
+
+    const provincia =
+      provincias.find(
+        (item) => item.id === provinciaId
+      );
+
+    if (!localidad) {
+      return;
+    }
+
+    const label =
+      `${localidad.nombre}${provincia ? `, ${provincia.nombre}` : ""}`;
 
     setAdminSelectedLocation({
       latitude: localidad.lat,
       longitude: localidad.lon,
-      label: `${localidad.nombre}${provincia ? `, ${provincia.nombre}` : ""}`,
+      label,
     });
-    setAdminLocationKey((value) => value + 1);
+
+    setAdminLocationKey(
+      (value) => value + 1
+    );
+
+    try {
+      window.localStorage.setItem(
+        ADMIN_LAST_LOCATION_STORAGE_KEY,
+        JSON.stringify({
+          provinciaId,
+          localidadId: id,
+          latitude: localidad.lat,
+          longitude: localidad.lon,
+          label,
+        })
+      );
+    } catch (error) {
+      console.error(
+        "No se pudo guardar la última localidad del Centro de Monitoreo:",
+        error
+      );
+    }
   }
 
   /* =======================================================
