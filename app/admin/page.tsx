@@ -18,6 +18,39 @@ type Report = {
   videoUrl: string | null;
   audioUrl: string | null;
   createdAt: string;
+
+  aiAnalyzed?: boolean;
+  aiCategory?: string | null;
+  aiPriority?: string | null;
+  aiSummary?: string | null;
+  aiConfidence?: number | null;
+  aiPossibleSpam?: boolean | null;
+  aiReason?: string | null;
+  aiAnalyzedAt?: string | null;
+};
+
+type AiAnalysisResult = {
+  category: string;
+  priority: "critical" | "high" | "medium" | "low";
+  summary: string;
+  confidence: number;
+  possibleSpam: boolean;
+  reason: string;
+  relatedReports: boolean;
+  relatedReportIds: number[];
+  relationSummary: string;
+};
+
+type RelatedSearchResult = {
+  radiusKm: number;
+  timeMinutes: number;
+  candidatesFound: number;
+  candidates: Array<{
+    id: number;
+    category: string;
+    distanceMeters: number;
+    createdAt: string;
+  }>;
 };
 
 const PRIORIDAD_ESTADO: Record<string, number> = {
@@ -128,6 +161,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null);
+const [relatedSearch, setRelatedSearch] = useState<RelatedSearchResult | null>(null);
+const [aiError, setAiError] = useState<string | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
   const [mapPeriod, setMapPeriod] = useState("24h");
   const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
@@ -269,11 +306,70 @@ export default function AdminPage() {
     setAlertasCriticasPendientes((prev) => prev.filter((id) => id !== report.id));
   }
 
-  function openReport(report: Report) {
-    marcarCriticaComoRevisada(report);
-    setSelectedReport(report);
-  }
+ function openReport(report: Report) {
+  marcarCriticaComoRevisada(report);
+  setSelectedReport(report);
+  setAiResult(null);
+  setRelatedSearch(null);
+  setAiError(null);
+}
+  async function analyzeReportWithAi(reportId: number) {
+  try {
+    setAiLoading(true);
+    setAiError(null);
+    setAiResult(null);
+    setRelatedSearch(null);
 
+    const response = await fetch("/api/ai/analyze-report", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        reportId,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      setAiError(
+        data.error || "No se pudo analizar el reporte con IA."
+      );
+      return;
+    }
+
+    setAiResult(data.analysis ?? null);
+    setRelatedSearch(data.relatedSearch ?? null);
+
+    if (data.report) {
+      setSelectedReport((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...data.report,
+            }
+          : prev
+      );
+
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === data.report.id
+            ? {
+                ...report,
+                ...data.report,
+              }
+            : report
+        )
+      );
+    }
+  } catch (error) {
+    console.error(error);
+    setAiError("Error de conexión al analizar el reporte.");
+  } finally {
+    setAiLoading(false);
+  }
+}
   function returnToMap() {
     setSelectedReport(null);
     window.setTimeout(() => {
@@ -754,7 +850,185 @@ export default function AdminPage() {
                     <p className="mt-2 text-xs text-slate-500">La ubicación se visualiza en el mapa operativo principal.</p>
                   </div>
                 )}
+<div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4">
+  <div>
+    <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+      🤖 Análisis IA
+    </p>
 
+    <p className="mt-1 text-xs text-slate-400">
+      Analiza prioridad, categoría, posible spam y alertas relacionadas.
+    </p>
+  </div>
+
+  {!aiResult && !aiLoading && (
+    <button
+      onClick={() => void analyzeReportWithAi(selectedReport.id)}
+      className="mt-4 w-full rounded-xl bg-cyan-600 px-4 py-3 font-bold text-white hover:bg-cyan-500"
+    >
+      🤖 Analizar reporte con IA
+    </button>
+  )}
+
+  {aiLoading && (
+    <div className="mt-4 rounded-xl border border-cyan-500/20 bg-slate-950 p-4 text-sm text-cyan-200">
+      Analizando reporte y buscando posibles alertas relacionadas...
+    </div>
+  )}
+
+  {aiError && (
+    <div className="mt-4 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-300">
+      {aiError}
+    </div>
+  )}
+
+  {aiResult && (
+    <div className="mt-4 space-y-4">
+
+      <div className="grid gap-3 sm:grid-cols-2">
+
+        <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+          <p className="text-xs uppercase tracking-wider text-slate-500">
+            Prioridad IA
+          </p>
+
+          <p className="mt-1 font-bold text-cyan-200">
+            {aiResult.priority === "critical"
+              ? "🔴 CRÍTICA"
+              : aiResult.priority === "high"
+              ? "🟠 ALTA"
+              : aiResult.priority === "medium"
+              ? "🟡 MEDIA"
+              : "🟢 BAJA"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+          <p className="text-xs uppercase tracking-wider text-slate-500">
+            Confianza
+          </p>
+
+          <p className="mt-1 font-bold text-cyan-200">
+            {Math.round(aiResult.confidence * 100)}%
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+          <p className="text-xs uppercase tracking-wider text-slate-500">
+            Categoría sugerida
+          </p>
+
+          <p className="mt-1 font-bold text-slate-200">
+            {aiResult.category}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+          <p className="text-xs uppercase tracking-wider text-slate-500">
+            Posible spam
+          </p>
+
+          <p className="mt-1 font-bold text-slate-200">
+            {aiResult.possibleSpam ? "⚠️ Sí" : "✓ No"}
+          </p>
+        </div>
+
+      </div>
+
+      <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+        <p className="text-xs uppercase tracking-wider text-slate-500">
+          Resumen IA
+        </p>
+
+        <p className="mt-2 leading-6 text-slate-200">
+          {aiResult.summary}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+        <p className="text-xs uppercase tracking-wider text-slate-500">
+          Evaluación
+        </p>
+
+        <p className="mt-2 leading-6 text-slate-300">
+          {aiResult.reason}
+        </p>
+      </div>
+
+      <div
+        className={`rounded-xl border p-4 ${
+          aiResult.relatedReports
+            ? "border-violet-500/40 bg-violet-950/30"
+            : "border-slate-700 bg-slate-950"
+        }`}
+      >
+        <p className="text-xs font-bold uppercase tracking-wider text-violet-300">
+          🔗 Alertas posiblemente relacionadas
+        </p>
+
+        {aiResult.relatedReports ? (
+          <>
+            <p className="mt-3 text-lg font-black text-white">
+              {aiResult.relatedReportIds
+                .map((id) => `#${id}`)
+                .join(" · ")}
+            </p>
+
+            <p className="mt-2 leading-6 text-slate-200">
+              {aiResult.relationSummary}
+            </p>
+
+            {relatedSearch &&
+              relatedSearch.candidates.length > 0 && (
+                <div className="mt-4 space-y-2">
+
+                  {relatedSearch.candidates
+                    .filter((candidate) =>
+                      aiResult.relatedReportIds.includes(candidate.id)
+                    )
+                    .map((candidate) => (
+                      <div
+                        key={candidate.id}
+                        className="rounded-lg border border-violet-500/20 bg-black/20 px-3 py-2 text-sm text-slate-300"
+                      >
+                        <span className="font-bold text-white">
+                          #{candidate.id}
+                        </span>
+
+                        {" · "}
+                        {candidate.category}
+
+                        {" · "}
+                        {candidate.distanceMeters} m
+                      </div>
+                    ))}
+
+                </div>
+              )}
+          </>
+        ) : (
+          <>
+            <p className="mt-2 leading-6 text-slate-400">
+              {aiResult.relationSummary}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-500">
+              No se encontraron coincidencias suficientes para relacionar esta alerta con otra.
+            </p>
+          </>
+        )}
+      </div>
+
+      <button
+        onClick={() => void analyzeReportWithAi(selectedReport.id)}
+        className="w-full rounded-xl border border-cyan-500/30 bg-cyan-950/30 px-4 py-3 font-bold text-cyan-200 hover:bg-cyan-950/50"
+      >
+        ↻ Volver a analizar
+      </button>
+
+    </div>
+  )} 
+</div>
                 <div>
                   <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Cambiar estado</p>
                   <div className="flex flex-wrap gap-2">
