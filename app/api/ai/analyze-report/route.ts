@@ -964,6 +964,193 @@ tu análisis es solamente apoyo para el operador.
       });
 
     /* =====================================================
+       DETECTAR PATRÓN DE PERSONA SOSPECHOSA
+       3 O MÁS REPORTES POSIBLEMENTE RELACIONADOS
+       EN 1 KM / 30 MINUTOS
+    ===================================================== */
+
+    let personPatternAlert:
+      | {
+          id: number;
+          triggerReportId: number;
+          reportIds: number[];
+          reportCount: number;
+          centerLatitude: number | null;
+          centerLongitude: number | null;
+          radiusKm: number;
+          timeWindowMinutes: number;
+          summary: string;
+          reason: string | null;
+          confidence: number | null;
+          status: string;
+          lastReportAt: Date;
+          createdAt: Date;
+          updatedAt: Date;
+        }
+      | null = null;
+
+    const isPersonSuspiciousReport =
+      report.category === "Persona sospechosa" ||
+      analysis.category === "Persona sospechosa";
+
+    if (isPersonSuspiciousReport) {
+      const relatedPersonReportIds =
+        analysis.relatedReportIds.filter(
+          (relatedId) =>
+            nearbyReports.some(
+              (candidate) =>
+                candidate.id === relatedId &&
+                candidate.category ===
+                  "Persona sospechosa"
+            )
+        );
+
+      const patternReportIds =
+        Array.from(
+          new Set([
+            report.id,
+            ...relatedPersonReportIds,
+          ])
+        );
+
+      if (patternReportIds.length >= 3) {
+        const recentPatternAlerts =
+          await prisma.personPatternAlert.findMany({
+            where: {
+              status: {
+                in: ["pendiente", "en_revision"],
+              },
+              lastReportAt: {
+                gte: new Date(
+                  report.createdAt.getTime() -
+                    RELATED_TIME_MINUTES *
+                      60 *
+                      1000
+                ),
+                lte: new Date(
+                  report.createdAt.getTime() +
+                    RELATED_TIME_MINUTES *
+                      60 *
+                      1000
+                ),
+              },
+            },
+            orderBy: {
+              updatedAt: "desc",
+            },
+            take: 20,
+          });
+
+        const existingPattern =
+          recentPatternAlerts.find((alert) => {
+            const sharesReport =
+              alert.reportIds.some((id) =>
+                patternReportIds.includes(id)
+              );
+
+            if (sharesReport) {
+              return true;
+            }
+
+            if (
+              report.latitude === null ||
+              report.longitude === null ||
+              alert.centerLatitude === null ||
+              alert.centerLongitude === null
+            ) {
+              return false;
+            }
+
+            const distanceKm =
+              calculateDistanceKm(
+                report.latitude,
+                report.longitude,
+                alert.centerLatitude,
+                alert.centerLongitude
+              );
+
+            return (
+              Number.isFinite(distanceKm) &&
+              distanceKm <= RELATED_RADIUS_KM
+            );
+          });
+
+        if (existingPattern) {
+          const mergedReportIds =
+            Array.from(
+              new Set([
+                ...existingPattern.reportIds,
+                ...patternReportIds,
+              ])
+            );
+
+          personPatternAlert =
+            await prisma.personPatternAlert.update({
+              where: {
+                id: existingPattern.id,
+              },
+              data: {
+                triggerReportId: report.id,
+                reportIds: mergedReportIds,
+                reportCount:
+                  mergedReportIds.length,
+                centerLatitude:
+                  report.latitude,
+                centerLongitude:
+                  report.longitude,
+                radiusKm:
+                  RELATED_RADIUS_KM,
+                timeWindowMinutes:
+                  RELATED_TIME_MINUTES,
+                summary:
+                  `La IA detectó ${mergedReportIds.length} reportes posiblemente relacionados de Persona sospechosa en la misma zona.`,
+                reason:
+                  analysis.relationSummary,
+                confidence:
+                  analysis.confidence,
+                status: "pendiente",
+                lastReportAt:
+                  report.createdAt,
+              },
+            });
+        } else {
+          personPatternAlert =
+            await prisma.personPatternAlert.create({
+              data: {
+                triggerReportId:
+                  report.id,
+                reportIds:
+                  patternReportIds,
+                reportCount:
+                  patternReportIds.length,
+                centerLatitude:
+                  report.latitude,
+                centerLongitude:
+                  report.longitude,
+                radiusKm:
+                  RELATED_RADIUS_KM,
+                timeWindowMinutes:
+                  RELATED_TIME_MINUTES,
+                summary:
+                  `La IA detectó ${patternReportIds.length} reportes posiblemente relacionados de Persona sospechosa en la misma zona.`,
+                reason:
+                  analysis.relationSummary,
+                confidence:
+                  analysis.confidence,
+                status: "pendiente",
+                lastReportAt:
+                  report.createdAt,
+              },
+            });
+        }
+
+        console.log(
+          `[IA] Patrón de Persona sospechosa detectado: ${personPatternAlert.reportCount} reportes relacionados. Alerta #${personPatternAlert.id}.`
+        );
+      }
+    }
+
+    /* =====================================================
        COMPARAR FOTO CON VEHÍCULOS ACTIVOS EN SEGUIMIENTO
     ===================================================== */
 
@@ -1081,6 +1268,8 @@ tu análisis es solamente apoyo para el operador.
       analysis,
 
       vehicleMatches,
+
+      personPatternAlert,
 
       relatedSearch: {
         radiusKm:
