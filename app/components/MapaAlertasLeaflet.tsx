@@ -411,8 +411,21 @@ function AdminViewport({
 }) {
   const map = useMap();
 
+  /*
+   * Guardamos siempre la lista más reciente de reportes,
+   * pero NO usamos sus cambios para mover la cámara.
+   *
+   * Esto evita que el mapa del Centro de Monitoreo vuelva
+   * solo a su posición cada vez que se actualizan los reportes.
+   */
+  const reportsRef = useRef(reports);
+
   useEffect(() => {
-    const validReports = reports.filter(
+    reportsRef.current = reports;
+  }, [reports]);
+
+  useEffect(() => {
+    const validReports = reportsRef.current.filter(
       (report) =>
         report.latitude !== null &&
         report.longitude !== null
@@ -478,7 +491,6 @@ function AdminViewport({
     };
   }, [
     map,
-    reports,
     resetKey,
     selectedLocation,
     locationKey,
