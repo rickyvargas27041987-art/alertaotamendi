@@ -35,6 +35,16 @@ type NearbyToast = {
   important: boolean;
 } | null;
 
+type NearbyPharmacy = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+};
+
 function calcularDistanciaKm(
   lat1: number,
   lon1: number,
@@ -103,6 +113,11 @@ export default function Home() {
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [emergencyMenuOpen, setEmergencyMenuOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [pharmaciesOpen, setPharmaciesOpen] = useState(false);
+  const [pharmaciesLoading, setPharmaciesLoading] = useState(false);
+  const [pharmaciesError, setPharmaciesError] = useState("");
+  const [nearbyPharmacies, setNearbyPharmacies] = useState<NearbyPharmacy[]>([]);
+  const [pharmacySearchRadiusKm, setPharmacySearchRadiusKm] = useState(5);
   const [isRecording, setIsRecording] = useState(false);
   const [nearbyToast, setNearbyToast] = useState<NearbyToast>(null);
 
@@ -348,6 +363,42 @@ export default function Home() {
       window.clearInterval(interval);
     };
   }, [notificationsEnabled, latitude, longitude]);
+
+  async function openNearbyPharmacies() {
+    setPharmaciesOpen(true);
+    setPharmaciesLoading(true);
+    setPharmaciesError("");
+    setNearbyPharmacies([]);
+
+    try {
+      if (!navigator.geolocation) {
+        throw new Error("Este dispositivo no permite obtener la ubicación.");
+      }
+
+      const position = await getPosition();
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+
+      const response = await fetch(
+        `/api/pharmacies?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "No se pudieron buscar farmacias cercanas.");
+      }
+
+      setNearbyPharmacies(Array.isArray(data.pharmacies) ? data.pharmacies : []);
+      setPharmacySearchRadiusKm(Number(data.radiusKm) || 5);
+    } catch (error) {
+      setPharmaciesError(
+        error instanceof Error ? error.message : "No se pudieron buscar farmacias cercanas."
+      );
+    } finally {
+      setPharmaciesLoading(false);
+    }
+  }
 
   async function startRecording() {
     try {
@@ -612,6 +663,131 @@ export default function Home() {
         </div>
       )}
 
+      {pharmaciesOpen && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => setPharmaciesOpen(false)}
+        >
+          <div
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                  Cerca de tu ubicación
+                </p>
+                <h2 className="mt-1 text-2xl font-black">💊 Farmacias cercanas</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Se buscan automáticamente usando la ubicación de tu teléfono.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPharmaciesOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-300"
+                aria-label="Cerrar farmacias cercanas"
+              >
+                ✕
+              </button>
+            </div>
+
+            {pharmaciesLoading && (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-center">
+                <div className="text-3xl">📍</div>
+                <p className="mt-2 font-bold">Buscando farmacias cercanas…</p>
+                <p className="mt-1 text-xs text-slate-500">Esperá unos segundos mientras obtenemos tu ubicación.</p>
+              </div>
+            )}
+
+            {!pharmaciesLoading && pharmaciesError && (
+              <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-950/30 p-4">
+                <p className="font-bold text-red-200">No pudimos completar la búsqueda</p>
+                <p className="mt-1 text-sm text-slate-300">{pharmaciesError}</p>
+                <button
+                  type="button"
+                  onClick={() => void openNearbyPharmacies()}
+                  className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
+
+            {!pharmaciesLoading && !pharmaciesError && nearbyPharmacies.length === 0 && (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-center">
+                <p className="font-bold">No encontramos farmacias registradas cerca.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  La búsqueda se amplió hasta {pharmacySearchRadiusKm} km.
+                </p>
+              </div>
+            )}
+
+            {!pharmaciesLoading && nearbyPharmacies.length > 0 && (
+              <div className="mt-5 space-y-3">
+                <p className="text-xs text-slate-500">
+                  Mostrando las más cercanas dentro de {pharmacySearchRadiusKm} km.
+                </p>
+
+                {nearbyPharmacies.map((pharmacy) => (
+                  <div
+                    key={pharmacy.id}
+                    className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-xl">
+                        💊
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-black text-white">{pharmacy.name}</p>
+                        <p className="mt-1 text-xs font-bold text-emerald-300">
+                          📍 A {pharmacy.distanceKm.toFixed(1)} km aprox.
+                        </p>
+                        {pharmacy.address && (
+                          <p className="mt-1 text-xs leading-5 text-slate-400">{pharmacy.address}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={`mt-3 grid gap-2 ${pharmacy.phone ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {pharmacy.phone && (
+                        <a
+                          href={`tel:${pharmacy.phone.replace(/[^+\d]/g, "")}`}
+                          className="rounded-xl bg-slate-800 px-3 py-2 text-center text-xs font-bold"
+                        >
+                          ☎️ Llamar
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            `https://www.google.com/maps/dir/?api=1&destination=${pharmacy.latitude},${pharmacy.longitude}`,
+                            "_blank",
+                            "noopener,noreferrer"
+                          )
+                        }
+                        className="rounded-xl bg-emerald-600 px-3 py-2 text-center text-xs font-bold"
+                      >
+                        🧭 Cómo llegar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
+              ℹ️ Esta opción muestra farmacias cercanas registradas en mapas públicos. No indica necesariamente cuál está de turno ni garantiza horarios de atención.
+            </div>
+
+            <p className="mt-4 text-center text-[11px] font-semibold tracking-wider text-slate-600">
+              RVS DESARROLLADOR
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-md px-4 pb-10 sm:px-5">
         <header className="sticky top-0 z-30 -mx-4 flex items-center justify-between border-b border-slate-900 bg-slate-950/90 px-4 py-4 backdrop-blur sm:-mx-5 sm:px-5">
           <div className="flex items-center gap-2">
@@ -641,15 +817,26 @@ export default function Home() {
             <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">
               REPORTE CIUDADANO
             </span>
-            <button
-              type="button"
-              onClick={() => setInfoOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-black text-slate-200 shadow-lg transition active:scale-95"
-              aria-label="Información sobre Alerta Otamendi"
-              title="Cómo funciona Alerta Otamendi"
-            >
-              ⓘ
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void openNearbyPharmacies()}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-700/50 bg-emerald-950/40 text-sm shadow-lg transition active:scale-95"
+                aria-label="Buscar farmacias cercanas"
+                title="Farmacias cercanas"
+              >
+                💊
+              </button>
+              <button
+                type="button"
+                onClick={() => setInfoOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-black text-slate-200 shadow-lg transition active:scale-95"
+                aria-label="Información sobre Alerta Otamendi"
+                title="Cómo funciona Alerta Otamendi"
+              >
+                ⓘ
+              </button>
+            </div>
           </div>
           <h2 className="mt-3 text-3xl font-black leading-tight">¿Qué está pasando?</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
@@ -808,11 +995,11 @@ export default function Home() {
         </section>
 
         <footer className="py-8 text-center text-xs text-slate-600">
-  <p>ALERTA OTAMENDI · Comunidad conectada</p>
-  <p className="mt-1 text-[9px] tracking-widest text-slate-700">
-    RVS DESARROLLADOR
-  </p>
-</footer> 
+          <p>ALERTA OTAMENDI · Comunidad conectada</p>
+          <p className="mt-1 text-[9px] tracking-widest text-slate-700">
+            RVS DESARROLLADOR
+          </p>
+        </footer>
       </div>
     </main>
   );
