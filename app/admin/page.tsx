@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import PersonPatternAlerts from "../components/PersonPatternAlerts";
 
 const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
   ssr: false,
@@ -584,6 +585,21 @@ const [aiError, setAiError] = useState<string | null>(null);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      <PersonPatternAlerts
+  onOpenReport={(reportId) => {
+    const report = reports.find(
+      (item) => item.id === reportId
+    );
+
+    if (report) {
+      openReport(report);
+    } else {
+      window.alert(
+        `No encontramos el reporte #${reportId} en la lista actual.`
+      );
+    }
+  }}
+/>
       {alertaNueva && (
         <div
           className={`fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border p-4 shadow-2xl ${alertVisual.box}`}
