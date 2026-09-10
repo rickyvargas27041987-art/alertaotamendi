@@ -108,6 +108,7 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const reportFormRef = useRef<HTMLDivElement | null>(null);
+  const emergencyMenuRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const baselineReadyRef = useRef(false);
 
@@ -637,7 +638,19 @@ export default function Home() {
               >
                 {isRecording ? "🔴 Grabando…" : audio ? "🎤 Audio ✓" : "🎤 Mantener para audio"}
               </button>
-              <button onClick={() => setEmergencyMenuOpen((value) => !value)} className="rounded-2xl bg-red-600 py-3 text-sm font-semibold">
+            <button
+  onClick={() => {
+    setEmergencyMenuOpen((value) => !value);
+
+    window.setTimeout(() => {
+      emergencyMenuRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+  }}
+  className="rounded-2xl bg-red-600 py-3 text-sm font-semibold"
+> 
                 ☎️ Emergencias
               </button>
             </div>
