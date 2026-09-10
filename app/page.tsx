@@ -656,7 +656,10 @@ export default function Home() {
             </div>
 
             {emergencyMenuOpen && (
-              <div className="mt-3 rounded-2xl border border-red-500/30 bg-slate-950 p-4">
+             <div
+  ref={emergencyMenuRef}
+  className="fixed inset-x-4 bottom-4 z-[9999] mx-auto max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl border border-red-500/30 bg-slate-950 p-4 shadow-2xl"
+> 
                 <p className="mb-3 text-center font-bold">Si hay peligro inmediato, llamá al servicio correspondiente</p>
                 <div className="grid gap-2">
                   <a href="tel:911" className="rounded-xl bg-red-600 p-3 text-center font-bold">🆘 Emergencias 911</a>
