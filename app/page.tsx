@@ -102,6 +102,7 @@ export default function Home() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [emergencyMenuOpen, setEmergencyMenuOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [nearbyToast, setNearbyToast] = useState<NearbyToast>(null);
 
@@ -530,6 +531,87 @@ export default function Home() {
         </div>
       )}
 
+      {infoOpen && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => setInfoOpen(false)}
+        >
+          <div
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-red-300">
+                  Información
+                </p>
+                <h2 className="mt-1 text-2xl font-black">🚨 Alerta Otamendi</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Una herramienta comunitaria para comunicar y recibir información útil de forma rápida y ordenada.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInfoOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-300"
+                aria-label="Cerrar información"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3 text-sm leading-5 text-slate-300">
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">📱 ¿Cómo enviar un reporte?</p>
+                <p className="mt-1">Elegí qué está pasando, describí brevemente la situación y obtené tu ubicación. Si es seguro, también podés adjuntar una foto, video o audio.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">📍 Ubicación y mapa</p>
+                <p className="mt-1">La ubicación permite colocar el reporte en el lugar correcto. En el mapa podés consultar situaciones recientes reportadas en la zona.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">🔔 Alertas cercanas</p>
+                <p className="mt-1">Podés activar las notificaciones para recibir avisos de situaciones importantes cercanas a tu ubicación.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">🌦️ Alertas meteorológicas</p>
+                <p className="mt-1">El sistema también puede comunicar alertas meteorológicas oficiales amarillas y rojas cuando corresponda.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">📄 Seguimiento</p>
+                <p className="mt-1">Desde “Mis reportes” podés consultar el estado de los reportes enviados desde este dispositivo.</p>
+              </div>
+
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-100/90">
+                <p className="font-bold">⚠️ Tu seguridad es primero</p>
+                <p className="mt-1">No persigas, no intervengas y no te expongas para obtener imágenes. La foto, el video y el audio son siempre opcionales.</p>
+              </div>
+
+              <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-3">
+                <p className="font-bold text-white">☎️ Ante una emergencia</p>
+                <p className="mt-1 text-slate-300">Alerta Otamendi no reemplaza a la Policía, Bomberos, emergencias médicas ni al 911. Si existe peligro inmediato, utilizá los servicios oficiales.</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setInfoOpen(false)}
+              className="mt-5 w-full rounded-2xl bg-red-500 py-3 font-black transition active:scale-[0.99]"
+            >
+              Entendido
+            </button>
+
+            <p className="mt-4 text-center text-[11px] font-semibold tracking-wider text-slate-600">
+              RVS DESARROLLADOR
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-md px-4 pb-10 sm:px-5">
         <header className="sticky top-0 z-30 -mx-4 flex items-center justify-between border-b border-slate-900 bg-slate-950/90 px-4 py-4 backdrop-blur sm:-mx-5 sm:px-5">
           <div className="flex items-center gap-2">
@@ -555,7 +637,20 @@ export default function Home() {
         </header>
 
         <section className="pt-7">
-          <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">REPORTE CIUDADANO</span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">
+              REPORTE CIUDADANO
+            </span>
+            <button
+              type="button"
+              onClick={() => setInfoOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-black text-slate-200 shadow-lg transition active:scale-95"
+              aria-label="Información sobre Alerta Otamendi"
+              title="Cómo funciona Alerta Otamendi"
+            >
+              ⓘ
+            </button>
+          </div>
           <h2 className="mt-3 text-3xl font-black leading-tight">¿Qué está pasando?</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
             Elegí una opción, contanos brevemente qué ves y enviá la alerta. El centro de monitoreo recibe tu ubicación automáticamente.
