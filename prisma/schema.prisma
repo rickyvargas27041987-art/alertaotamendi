@@ -103,6 +103,48 @@ model VehicleMatch {
   @@index([confidence])
 }
 
+model PersonPatternAlert {
+  id Int @id @default(autoincrement())
+
+  // Reporte que hizo alcanzar o superar el umbral de 3 coincidencias
+  triggerReportId Int
+
+  // Todos los reportes que la IA consideró posiblemente relacionados
+  reportIds Int[] @default([])
+
+  // Cantidad de reportes incluidos actualmente en el patrón
+  reportCount Int @default(3)
+
+  // Zona aproximada del patrón
+  centerLatitude  Float?
+  centerLongitude Float?
+
+  // Parámetros usados para detectar el patrón
+  radiusKm          Float @default(1)
+  timeWindowMinutes Int   @default(30)
+
+  // Resumen para el operador
+  summary String
+  reason  String?
+
+  // Confianza general del análisis, entre 0 y 1
+  confidence Float?
+
+  // Estado de revisión en el Centro de Monitoreo
+  status String @default("pendiente")
+
+  // Último reporte incorporado al patrón
+  lastReportAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([triggerReportId])
+  @@index([reportCount])
+  @@index([status])
+  @@index([lastReportAt])
+}
+
 model PushSubscription {
   id        Int      @id @default(autoincrement())
   endpoint  String   @unique
