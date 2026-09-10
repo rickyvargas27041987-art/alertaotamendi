@@ -76,13 +76,13 @@ const OTAMENDI_CENTER: [number, number] = [
 
 /*
  * Vista pública:
- * - Predeterminada: 2 km alrededor de Otamendi.
+ * - Predeterminada: 1,5 km alrededor de la ubicación actual.
  * - Al tocar "Mi ubicación": 200 m alrededor del usuario.
  *
  * Esto afecta solamente la cámara del mapa.
  * NO modifica el radio de notificaciones push.
  */
-const PUBLIC_DEFAULT_RADIUS_METERS = 2_000;
+const PUBLIC_DEFAULT_RADIUS_METERS = 1_500;
 const PUBLIC_USER_RADIUS_METERS = 200;
 
 /*
@@ -494,9 +494,11 @@ function AdminViewport({
 function PublicViewport({
   userPosition,
   locationKey,
+  radiusMeters,
 }: {
   userPosition: UserPosition | null;
   locationKey: number;
+  radiusMeters: number;
 }) {
   const map = useMap();
 
@@ -505,9 +507,9 @@ function PublicViewport({
       map.invalidateSize();
 
       /*
-       * Si todavía no se pidió la ubicación:
-       * mostramos una vista de aproximadamente
-       * 2 km a la redonda de Otamendi.
+       * Si todavía no tenemos la ubicación:
+       * usamos Otamendi como respaldo y mostramos
+       * aproximadamente 1,5 km a la redonda.
        */
       if (!userPosition) {
         const defaultBounds = L.latLng(
@@ -524,14 +526,14 @@ function PublicViewport({
       }
 
       /*
-       * Cuando el vecino toca "Mi ubicación":
-       * mostramos aproximadamente 200 m
-       * a la redonda de su posición.
+       * Con la ubicación disponible:
+       * usamos 1,5 km al abrir automáticamente
+       * y 200 m al tocar "Mi ubicación".
        */
       const userBounds = L.latLng(
         userPosition.latitude,
         userPosition.longitude
-      ).toBounds(PUBLIC_USER_RADIUS_METERS * 2);
+      ).toBounds(radiusMeters * 2);
 
       map.fitBounds(userBounds, {
         padding: [24, 24],
@@ -547,6 +549,7 @@ function PublicViewport({
     map,
     userPosition,
     locationKey,
+    radiusMeters,
   ]);
 
   return null;
@@ -570,6 +573,11 @@ export default function MapaAlertasLeaflet({
 
   const [locationKey, setLocationKey] =
     useState(0);
+
+  const [
+    publicViewportRadiusMeters,
+    setPublicViewportRadiusMeters,
+  ] = useState(PUBLIC_DEFAULT_RADIUS_METERS);
 
   const [
     userPosition,
@@ -699,7 +707,8 @@ export default function MapaAlertasLeaflet({
   const requestUserLocation =
     useCallback(
       (
-        recenter = true
+        recenter = true,
+        radiusMeters = PUBLIC_USER_RADIUS_METERS
       ) => {
         if (mode !== "public") {
           return;
@@ -751,6 +760,10 @@ export default function MapaAlertasLeaflet({
             setLocating(false);
 
             if (recenter) {
+              setPublicViewportRadiusMeters(
+                radiusMeters
+              );
+
               setLocationKey(
                 (value) =>
                   value + 1
@@ -801,6 +814,24 @@ export default function MapaAlertasLeaflet({
       [mode]
     );
 
+
+  /* =======================================================
+     UBICACIÓN AUTOMÁTICA AL ABRIR EL MAPA PÚBLICO
+     - Intenta centrar en la ubicación actual.
+     - Vista inicial aproximada: 1,5 km.
+     - Si falla o no hay permiso, queda Otamendi como respaldo.
+  ======================================================= */
+
+  useEffect(() => {
+    if (mode !== "public") {
+      return;
+    }
+
+    requestUserLocation(
+      true,
+      PUBLIC_DEFAULT_RADIUS_METERS
+    );
+  }, [mode, requestUserLocation]);
 
   /* =======================================================
      RENDER
@@ -880,7 +911,7 @@ export default function MapaAlertasLeaflet({
                 {locating
                   ? "Buscando tu ubicación…"
                   : locationMessage ||
-                    "Vista general de aproximadamente 2 km. Tocá «Mi ubicación» para ver 200 m a tu alrededor."}
+                    "Al abrir, intentamos mostrar tu ubicación con una vista de aproximadamente 1,5 km. Tocá «Mi ubicación» para acercar a 200 m."}
               </p>
             </div>
 
@@ -888,7 +919,8 @@ export default function MapaAlertasLeaflet({
               type="button"
               onClick={() =>
                 requestUserLocation(
-                  true
+                  true,
+                  PUBLIC_USER_RADIUS_METERS
                 )
               }
               disabled={locating}
@@ -1065,6 +1097,9 @@ export default function MapaAlertasLeaflet({
                 }
                 locationKey={
                   locationKey
+                }
+                radiusMeters={
+                  publicViewportRadiusMeters
                 }
               />
             )}
