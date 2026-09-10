@@ -53,6 +53,22 @@ type RelatedSearchResult = {
   }>;
 };
 
+type VehicleWatch = {
+  id: number;
+  sourceReportId: number;
+  imageUrl: string;
+  plate: string | null;
+  make: string | null;
+  model: string | null;
+  color: string | null;
+  vehicleType: string | null;
+  distinctive: string | null;
+  visualSummary: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const PRIORIDAD_ESTADO: Record<string, number> = {
   pendiente: 1,
   en_analisis: 2,
@@ -176,6 +192,9 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("todas");
   const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
   const [listLimit, setListLimit] = useState(12);
+  const [vehicleWatches, setVehicleWatches] = useState<VehicleWatch[]>([]);
+  const [vehicleWatchLoading, setVehicleWatchLoading] = useState(false);
+  const [vehicleWatchActionId, setVehicleWatchActionId] = useState<number | null>(null);
 
   const ultimaAlertaIdRef = useRef<number | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
@@ -216,6 +235,110 @@ const [aiError, setAiError] = useState<string | null>(null);
     }
   }
 
+  async function loadVehicleWatches() {
+    try {
+      setVehicleWatchLoading(true);
+
+      const response = await fetch("/api/vehicle-watch", {
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success || !Array.isArray(data.vehicles)) {
+        return;
+      }
+
+      setVehicleWatches(data.vehicles);
+    } catch (error) {
+      console.error("Error cargando vehículos en seguimiento:", error);
+    } finally {
+      setVehicleWatchLoading(false);
+    }
+  }
+
+  async function addVehicleToWatch(reportId: number) {
+    try {
+      setVehicleWatchActionId(reportId);
+
+      const response = await fetch("/api/vehicle-watch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reportId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        alert(data.error || "No se pudo poner el vehículo en seguimiento.");
+        return;
+      }
+
+      await loadVehicleWatches();
+
+      alert(
+        data.alreadyWatching
+          ? "Este vehículo ya estaba en seguimiento."
+          : "Vehículo agregado al seguimiento."
+      );
+    } catch (error) {
+      console.error(error);
+      alert("Error al agregar el vehículo al seguimiento.");
+    } finally {
+      setVehicleWatchActionId(null);
+    }
+  }
+
+  async function finishVehicleWatch(id: number) {
+    const confirmed = window.confirm(
+      "¿Querés finalizar el seguimiento de este vehículo?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setVehicleWatchActionId(id);
+
+      const response = await fetch("/api/vehicle-watch", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id,
+          active: false,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        alert(data.error || "No se pudo finalizar el seguimiento.");
+        return;
+      }
+
+      await loadVehicleWatches();
+    } catch (error) {
+      console.error(error);
+      alert("Error al finalizar el seguimiento.");
+    } finally {
+      setVehicleWatchActionId(null);
+    }
+  }
+
+  function openVehicleSourceReport(sourceReportId: number) {
+    const report = reports.find((item) => item.id === sourceReportId);
+
+    if (!report) {
+      alert("El reporte original no está disponible en la lista actual.");
+      return;
+    }
+
+    openReport(report);
+  }
+
   async function changeStatus(id: number, status: string) {
     try {
       setUpdatingId(id);
@@ -246,7 +369,10 @@ const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadReports();
+    void loadVehicleWatches();
+
     const interval = window.setInterval(() => void loadReports(), 3000);
+
     return () => window.clearInterval(interval);
   }, []);
 
@@ -620,45 +746,147 @@ const [aiError, setAiError] = useState<string | null>(null);
             />
           </div>
 
-          <aside className="min-w-0 rounded-3xl border border-slate-800 bg-slate-900/80 p-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-400">Atención</p>
-                <h2 className="text-sm font-black leading-4">Prioridad inmediata</h2>
+          <aside className="min-w-0 space-y-3">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-400">Atención</p>
+                  <h2 className="text-sm font-black leading-4">Prioridad inmediata</h2>
+                </div>
+                <span className="rounded-full bg-slate-950 px-2 py-1 text-[11px] text-slate-400">Top 5</span>
               </div>
-              <span className="rounded-full bg-slate-950 px-2 py-1 text-[11px] text-slate-400">Top 5</span>
+
+              <div className="space-y-2">
+                {attentionReports.length === 0 && (
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4 text-sm text-emerald-300">
+                    ✓ No hay alertas activas.
+                  </div>
+                )}
+
+                {attentionReports.map((report) => (
+                  <button
+                    key={report.id}
+                    onClick={() => openReport(report)}
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-slate-600 hover:bg-slate-900"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-4 break-words">
+                          {categoryEmoji(report.category)} {report.category}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          #{report.id} · {relativeTime(report.createdAt)}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(report.status)}`}>
+                        {statusLabel(report.status)}
+                      </span>
+                    </div>
+
+                    <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-slate-400">
+                      {report.description}
+                    </p>
+
+                    {alertasCriticasPendientes.includes(report.id) && (
+                      <span className="mt-2 inline-flex rounded-full bg-red-600 px-2 py-1 text-[10px] font-black animate-pulse">
+                        SIN REVISAR
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {attentionReports.length === 0 && (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4 text-sm text-emerald-300">
-                  ✓ No hay alertas activas.
+            <div className="rounded-3xl border border-cyan-500/25 bg-cyan-950/10 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-300">
+                    🚗 Vehículos
+                  </p>
+                  <h2 className="text-sm font-black leading-4">
+                    En seguimiento
+                  </h2>
+                </div>
+
+                <span className="rounded-full border border-cyan-500/20 bg-slate-950 px-2 py-1 text-[11px] font-bold text-cyan-300">
+                  {vehicleWatches.length}
+                </span>
+              </div>
+
+              {vehicleWatchLoading && vehicleWatches.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-center text-xs text-slate-500">
+                  Cargando...
+                </div>
+              ) : vehicleWatches.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-center">
+                  <div className="text-2xl">🚙</div>
+                  <p className="mt-2 text-xs font-bold text-slate-300">
+                    Sin vehículos en seguimiento
+                  </p>
+                  <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                    Abrí un reporte con foto y agregalo desde el detalle.
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-[290px] space-y-2 overflow-y-auto pr-1">
+                  {vehicleWatches.map((vehicle) => (
+                    <div
+                      key={vehicle.id}
+                      className="rounded-2xl border border-cyan-500/20 bg-slate-950 p-2.5"
+                    >
+                      <div className="flex gap-2.5">
+                        <img
+                          src={vehicle.imageUrl}
+                          alt={`Vehículo del reporte ${vehicle.sourceReportId}`}
+                          className="h-16 w-20 shrink-0 rounded-xl border border-slate-700 bg-black object-cover"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] font-black text-white">
+                                Reporte #{vehicle.sourceReportId}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-slate-500">
+                                {relativeTime(vehicle.createdAt)}
+                              </p>
+                            </div>
+
+                            <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[9px] font-black text-emerald-300">
+                              ACTIVO
+                            </span>
+                          </div>
+
+                          <p className="mt-1 truncate text-[10px] text-cyan-200">
+                            {vehicle.plate ||
+                              [vehicle.make, vehicle.model, vehicle.color]
+                                .filter(Boolean)
+                                .join(" · ") ||
+                              "Pendiente de análisis visual"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => openVehicleSourceReport(vehicle.sourceReportId)}
+                          className="rounded-lg border border-slate-700 px-2 py-2 text-[10px] font-bold text-slate-200 hover:bg-slate-800"
+                        >
+                          Ver reporte
+                        </button>
+
+                        <button
+                          onClick={() => void finishVehicleWatch(vehicle.id)}
+                          disabled={vehicleWatchActionId === vehicle.id}
+                          className="rounded-lg border border-red-500/30 bg-red-950/30 px-2 py-2 text-[10px] font-bold text-red-300 hover:bg-red-950/50 disabled:opacity-50"
+                        >
+                          Finalizar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
-
-              {attentionReports.map((report) => (
-                <button
-                  key={report.id}
-                  onClick={() => openReport(report)}
-                  className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-slate-600 hover:bg-slate-900"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold leading-4 break-words">
-                        {categoryEmoji(report.category)} {report.category}
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-500">#{report.id} · {relativeTime(report.createdAt)}</p>
-                    </div>
-                    <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(report.status)}`}>
-                      {statusLabel(report.status)}
-                    </span>
-                  </div>
-                  <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-slate-400">{report.description}</p>
-                  {alertasCriticasPendientes.includes(report.id) && (
-                    <span className="mt-2 inline-flex rounded-full bg-red-600 px-2 py-1 text-[10px] font-black animate-pulse">SIN REVISAR</span>
-                  )}
-                </button>
-              ))}
             </div>
           </aside>
         </section>
@@ -838,6 +1066,48 @@ const [aiError, setAiError] = useState<string | null>(null);
                     {selectedReport.audioUrl && (
                       <audio src={selectedReport.audioUrl} controls className="w-full" />
                     )}
+                  </div>
+                )}
+
+                {selectedReport.imageUrl && (
+                  <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                          🚗 Seguimiento de vehículo
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          Agrega esta foto a la lista de vehículos que el Centro de Monitoreo debe seguir.
+                        </p>
+                      </div>
+
+                      {vehicleWatches.some(
+                        (vehicle) => vehicle.sourceReportId === selectedReport.id
+                      ) && (
+                        <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-black text-emerald-300">
+                          EN SEGUIMIENTO
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => void addVehicleToWatch(selectedReport.id)}
+                      disabled={
+                        vehicleWatchActionId === selectedReport.id ||
+                        vehicleWatches.some(
+                          (vehicle) => vehicle.sourceReportId === selectedReport.id
+                        )
+                      }
+                      className="mt-4 w-full rounded-xl bg-cyan-600 px-4 py-3 font-bold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                    >
+                      {vehicleWatches.some(
+                        (vehicle) => vehicle.sourceReportId === selectedReport.id
+                      )
+                        ? "✓ Vehículo en seguimiento"
+                        : vehicleWatchActionId === selectedReport.id
+                        ? "Agregando..."
+                        : "🚗 Poner vehículo en seguimiento"}
+                    </button>
                   </div>
                 )}
 
