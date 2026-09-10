@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 const GEOREF_BASE =
-  "https://apis.datos.gob.ar/georef/api";
-
+  "https://apis.datos.gob.ar/georef/api/v2.0";
 type Provincia = {
   id: string;
   nombre: string;
@@ -79,7 +78,7 @@ async function obtenerLocalidades(
       provincia
     )}` +
     `&campos=id,nombre,centroide` +
-    `&max=5000` +
+    `&max=1000`
     `&orden=nombre`;
 
   const data =
