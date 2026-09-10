@@ -632,30 +632,81 @@ export default function MapaAlertasLeaflet({
     return () => { cancelled = true; };
   }, [mode]);
 
-  useEffect(() => {
-    if (mode !== "admin" || !provinciaId) {
-      setLocalidades([]);
-      setLocalidadId("");
-      return;
-    }
-
-    let cancelled = false;
-    setLoadingLocalidades(true);
+useEffect(() => {
+  if (mode !== "admin" || !provinciaId) {
     setLocalidades([]);
     setLocalidadId("");
+    return;
+  }
 
-    fetch(`/api/georef?tipo=localidades&provincia=${encodeURIComponent(provinciaId)}`, { cache: "force-cache" })
-      .then((response) => response.json())
-      .then((data) => {
-        if (!cancelled && data.success && Array.isArray(data.localidades)) {
-          setLocalidades(data.localidades);
-        }
-      })
-      .catch((error) => console.error("Error cargando localidades:", error))
-      .finally(() => { if (!cancelled) setLoadingLocalidades(false); });
+  const provinciaSeleccionada =
+    provincias.find(
+      (provincia) =>
+        provincia.id === provinciaId
+    );
 
-    return () => { cancelled = true; };
-  }, [mode, provinciaId]);
+  if (!provinciaSeleccionada) {
+    setLocalidades([]);
+    return;
+  }
+
+  let cancelled = false;
+
+  setLoadingLocalidades(true);
+  setLocalidades([]);
+  setLocalidadId("");
+
+  fetch(
+    `/api/georef?tipo=localidades&provincia=${encodeURIComponent(
+      provinciaSeleccionada.nombre
+    )}`,
+    {
+      cache: "no-store",
+    }
+  )
+    .then(async (response) => {
+      const data =
+        await response.json();
+
+      console.log(
+        "[GEOREF LOCALIDADES]",
+        data
+      );
+
+      if (
+        !cancelled &&
+        data.success &&
+        Array.isArray(
+          data.localidades
+        )
+      ) {
+        setLocalidades(
+          data.localidades
+        );
+      }
+    })
+    .catch((error) =>
+      console.error(
+        "Error cargando localidades:",
+        error
+      )
+    )
+    .finally(() => {
+      if (!cancelled) {
+        setLoadingLocalidades(
+          false
+        );
+      }
+    });
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  mode,
+  provinciaId,
+  provincias,
+]);
 
   function seleccionarLocalidad(id: string) {
     setLocalidadId(id);
