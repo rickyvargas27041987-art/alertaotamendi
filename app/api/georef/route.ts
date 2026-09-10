@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 const GEOREF_BASE =
   "https://apis.datos.gob.ar/georef/api/v2.0";
+
 type Provincia = {
   id: string;
   nombre: string;
@@ -23,15 +24,32 @@ type Localidad = {
 async function fetchGeoRef(url: string) {
   const response = await fetch(url, {
     cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
   });
+
+  const text = await response.text();
 
   if (!response.ok) {
     throw new Error(
-      `GeoRef respondió ${response.status}`
+      `GeoRef respondió ${response.status}: ${text.slice(
+        0,
+        500
+      )}`
     );
   }
 
-  return response.json();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `GeoRef devolvió una respuesta que no es JSON: ${text.slice(
+        0,
+        500
+      )}`
+    );
+  }
 }
 
 /* =========================================================
@@ -78,8 +96,13 @@ async function obtenerLocalidades(
       provincia
     )}` +
     `&campos=id,nombre,centroide` +
-   `&max=1000` +
+    `&max=1000` +
     `&orden=nombre`;
+
+  console.log(
+    "[GEOREF] Consultando localidades:",
+    url
+  );
 
   const data =
     await fetchGeoRef(url);
@@ -161,9 +184,7 @@ export async function GET(
 
       /*
        * PRIMER INTENTO
-       *
-       * Normalmente el selector nos envía
-       * el ID de provincia.
+       * Usa exactamente lo que llega.
        */
       let localidades =
         await obtenerLocalidades(
@@ -172,11 +193,8 @@ export async function GET(
 
       /*
        * SEGUNDO INTENTO
-       *
-       * Si GeoRef no devuelve localidades
-       * usando el ID, buscamos el nombre
-       * real de la provincia y repetimos
-       * la consulta.
+       * Si no devuelve nada, intenta resolver
+       * un ID de provincia a su nombre.
        */
       if (
         localidades.length === 0
@@ -186,9 +204,12 @@ export async function GET(
             provincia
           );
 
-        if (nombreProvincia) {
+        if (
+          nombreProvincia &&
+          nombreProvincia !== provincia
+        ) {
           console.log(
-            `[GEOREF] Reintentando localidades con provincia "${nombreProvincia}".`
+            `[GEOREF] Reintentando con nombre de provincia: ${nombreProvincia}`
           );
 
           localidades =
@@ -199,7 +220,7 @@ export async function GET(
       }
 
       /*
-       * Quitamos registros inválidos.
+       * Filtrar registros inválidos.
        */
       localidades =
         localidades.filter(
@@ -211,19 +232,15 @@ export async function GET(
               "string" &&
             localidad.centroide &&
             Number.isFinite(
-              localidad.centroide
-                .lat
+              localidad.centroide.lat
             ) &&
             Number.isFinite(
-              localidad.centroide
-                .lon
+              localidad.centroide.lon
             )
         );
 
       /*
-       * Ordenamos nuevamente por nombre
-       * para asegurarnos de que aparezcan
-       * correctamente en el desplegable.
+       * Ordenar por nombre.
        */
       localidades.sort(
         (a, b) =>
@@ -234,7 +251,7 @@ export async function GET(
       );
 
       console.log(
-        `[GEOREF] Provincia ${provincia}: ${localidades.length} localidades cargadas.`
+        `[GEOREF] Provincia "${provincia}": ${localidades.length} localidades cargadas.`
       );
 
       return NextResponse.json(
@@ -268,9 +285,14 @@ export async function GET(
       }
     );
   } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Error desconocido";
+
     console.error(
       "Error consultando GeoRef:",
-      error
+      message
     );
 
     return NextResponse.json(
@@ -278,6 +300,8 @@ export async function GET(
         success: false,
         message:
           "No se pudieron cargar provincias/localidades.",
+        detail:
+          message,
       },
       {
         status: 502,
