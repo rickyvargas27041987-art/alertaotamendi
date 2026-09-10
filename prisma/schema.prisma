@@ -30,33 +30,77 @@ model Report {
 }
 
 model VehicleWatch {
-  id              Int      @id @default(autoincrement())
+  id             Int @id @default(autoincrement())
 
   // Reporte donde apareció originalmente el vehículo
-  sourceReportId  Int
+  sourceReportId Int
 
   // Foto de referencia
-  imageUrl        String
+  imageUrl String
 
-  // Datos que puede identificar la IA
-  plate           String?
-  make            String?
-  model           String?
-  color           String?
-  vehicleType     String?
-  distinctive     String?
+  // Datos identificados por IA
+  plate       String?
+  make        String?
+  model       String?
+  color       String?
+  vehicleType String?
+  distinctive String?
 
   // Resumen visual generado por IA
-  visualSummary   String?
+  visualSummary String?
 
   // Seguimiento
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([sourceReportId])
   @@index([active])
   @@index([plate])
+}
+
+model VehicleMatch {
+  id Int @id @default(autoincrement())
+
+  // Vehículo que ya estaba en seguimiento
+  vehicleWatchId Int
+
+  // Reporte nuevo donde apareció la posible coincidencia
+  reportId Int
+
+  // Reporte original que inició el seguimiento
+  sourceReportId Int
+
+  // Foto del nuevo reporte
+  imageUrl String
+
+  // Resultado de la comparación IA
+  confidence Float
+
+  // Explicación breve de por qué puede ser el mismo vehículo
+  reason String
+
+  // Datos observados en la nueva imagen
+  detectedPlate       String?
+  detectedMake        String?
+  detectedModel       String?
+  detectedColor       String?
+  detectedVehicleType String?
+  detectedDistinctive String?
+  visualSummary       String?
+
+  // Estado de revisión por el operador
+  status String @default("pendiente")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vehicleWatchId, reportId])
+  @@index([vehicleWatchId])
+  @@index([reportId])
+  @@index([sourceReportId])
+  @@index([status])
+  @@index([confidence])
 }
 
 model PushSubscription {
