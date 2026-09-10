@@ -857,15 +857,57 @@ const [aiError, setAiError] = useState<string | null>(null);
                             </span>
                           </div>
 
-                          <p className="mt-1 truncate text-[10px] text-cyan-200">
-                            {vehicle.plate ||
-                              [vehicle.make, vehicle.model, vehicle.color]
-                                .filter(Boolean)
-                                .join(" · ") ||
-                              "Pendiente de análisis visual"}
-                          </p>
+                          <div className="mt-2 space-y-1 text-[10px] leading-4">
+                            <p>
+                              <span className="text-slate-500">Patente:</span>{" "}
+                              <span className="font-bold text-white">
+                                {vehicle.plate || "No identificada"}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="text-slate-500">Tipo:</span>{" "}
+                              <span className="text-cyan-200">
+                                {vehicle.vehicleType || "No identificado"}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="text-slate-500">Marca:</span>{" "}
+                              <span className="text-cyan-200">
+                                {vehicle.make || "No identificada"}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="text-slate-500">Modelo:</span>{" "}
+                              <span className="text-cyan-200">
+                                {vehicle.model || "No identificado"}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="text-slate-500">Color:</span>{" "}
+                              <span className="text-cyan-200">
+                                {vehicle.color || "No identificado"}
+                              </span>
+                            </p>
+                          </div>
                         </div>
                       </div>
+
+                      {(vehicle.distinctive || vehicle.visualSummary) && (
+                        <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2 text-[10px] leading-4">
+                          {vehicle.distinctive && (
+                            <p className="text-slate-300">
+                              <span className="font-bold text-slate-500">Rasgos:</span>{" "}
+                              {vehicle.distinctive}
+                            </p>
+                          )}
+                          {vehicle.visualSummary && (
+                            <p className={vehicle.distinctive ? "mt-1 text-slate-400" : "text-slate-400"}>
+                              <span className="font-bold text-slate-500">Resumen IA:</span>{" "}
+                              {vehicle.visualSummary}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <button
