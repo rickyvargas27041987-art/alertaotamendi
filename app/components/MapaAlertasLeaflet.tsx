@@ -25,6 +25,12 @@ import type {
 
 import "leaflet/dist/leaflet.css";
 
+import {
+  provinciasArgentina,
+  localidadesPorProvincia,
+  type LocalidadArgentina,
+} from "../data/localidadesArgentina";
+
 /* =========================================================
    TIPOS
 ========================================================= */
@@ -52,11 +58,7 @@ type UserPosition = {
 };
 
 type Provincia = { id: string; nombre: string };
-type Localidad = {
-  id: string;
-  nombre: string;
-  centroide: { lat: number; lon: number };
-};
+type Localidad = LocalidadArgentina;
 type AdminSelectedLocation = {
   latitude: number;
   longitude: number;
@@ -585,12 +587,10 @@ export default function MapaAlertasLeaflet({
     setLocationMessage,
   ] = useState("");
 
-  const [provincias, setProvincias] = useState<Provincia[]>([]);
+  const [provincias] = useState<Provincia[]>(provinciasArgentina);
   const [provinciaId, setProvinciaId] = useState("");
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   const [localidadId, setLocalidadId] = useState("");
-  const [loadingProvincias, setLoadingProvincias] = useState(false);
-  const [loadingLocalidades, setLoadingLocalidades] = useState(false);
   const [adminSelectedLocation, setAdminSelectedLocation] = useState<AdminSelectedLocation>(null);
   const [adminLocationKey, setAdminLocationKey] = useState(0);
 
@@ -611,102 +611,25 @@ export default function MapaAlertasLeaflet({
 
   /* =======================================================
      PROVINCIAS / LOCALIDADES - SOLO ADMIN
+     Base local: no depende de GeoRef en vivo.
   ======================================================= */
 
   useEffect(() => {
-    if (mode !== "admin") return;
+    if (mode !== "admin" || !provinciaId) {
+      setLocalidades([]);
+      setLocalidadId("");
+      return;
+    }
 
-    let cancelled = false;
-    setLoadingProvincias(true);
+    const lista = localidadesPorProvincia(provinciaId).slice();
 
-    fetch("/api/georef?tipo=provincias", { cache: "force-cache" })
-      .then((response) => response.json())
-      .then((data) => {
-        if (!cancelled && data.success && Array.isArray(data.provincias)) {
-          setProvincias(data.provincias);
-        }
-      })
-      .catch((error) => console.error("Error cargando provincias:", error))
-      .finally(() => { if (!cancelled) setLoadingProvincias(false); });
-
-    return () => { cancelled = true; };
-  }, [mode]);
-
-useEffect(() => {
-  if (mode !== "admin" || !provinciaId) {
-    setLocalidades([]);
-    setLocalidadId("");
-    return;
-  }
-
-  const provinciaSeleccionada =
-    provincias.find(
-      (provincia) =>
-        provincia.id === provinciaId
+    lista.sort((a, b) =>
+      a.nombre.localeCompare(b.nombre, "es")
     );
 
-  if (!provinciaSeleccionada) {
-    setLocalidades([]);
-    return;
-  }
-
-  let cancelled = false;
-
-  setLoadingLocalidades(true);
-  setLocalidades([]);
-  setLocalidadId("");
-
-  fetch(
-    `/api/georef?tipo=localidades&provincia=${encodeURIComponent(
-      provinciaSeleccionada.nombre
-    )}`,
-    {
-      cache: "no-store",
-    }
-  )
-    .then(async (response) => {
-      const data =
-        await response.json();
-
-      console.log(
-        "[GEOREF LOCALIDADES]",
-        data
-      );
-
-      if (
-        !cancelled &&
-        data.success &&
-        Array.isArray(
-          data.localidades
-        )
-      ) {
-        setLocalidades(
-          data.localidades
-        );
-      }
-    })
-    .catch((error) =>
-      console.error(
-        "Error cargando localidades:",
-        error
-      )
-    )
-    .finally(() => {
-      if (!cancelled) {
-        setLoadingLocalidades(
-          false
-        );
-      }
-    });
-
-  return () => {
-    cancelled = true;
-  };
-}, [
-  mode,
-  provinciaId,
-  provincias,
-]);
+    setLocalidades(lista);
+    setLocalidadId("");
+  }, [mode, provinciaId]);
 
   function seleccionarLocalidad(id: string) {
     setLocalidadId(id);
@@ -715,8 +638,8 @@ useEffect(() => {
     if (!localidad) return;
 
     setAdminSelectedLocation({
-      latitude: localidad.centroide.lat,
-      longitude: localidad.centroide.lon,
+      latitude: localidad.lat,
+      longitude: localidad.lon,
       label: `${localidad.nombre}${provincia ? `, ${provincia.nombre}` : ""}`,
     });
     setAdminLocationKey((value) => value + 1);
@@ -1012,10 +935,9 @@ useEffect(() => {
                   setProvinciaId(event.target.value);
                   setAdminSelectedLocation(null);
                 }}
-                disabled={loadingProvincias}
-                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
+                                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
               >
-                <option value="">{loadingProvincias ? "Cargando provincias…" : "Seleccionar provincia"}</option>
+                <option value="">"Seleccionar provincia"</option>
                 {provincias.map((provincia) => (
                   <option key={provincia.id} value={provincia.id}>{provincia.nombre}</option>
                 ))}
@@ -1024,10 +946,10 @@ useEffect(() => {
               <select
                 value={localidadId}
                 onChange={(event) => seleccionarLocalidad(event.target.value)}
-                disabled={!provinciaId || loadingLocalidades}
+                disabled={!provinciaId}
                 className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
               >
-                <option value="">{loadingLocalidades ? "Cargando localidades…" : "Seleccionar localidad"}</option>
+                <option value="">"Seleccionar localidad"</option>
                 {localidades.map((localidad) => (
                   <option key={localidad.id} value={localidad.id}>{localidad.nombre}</option>
                 ))}
