@@ -807,7 +807,12 @@ export default function Home() {
           <button onClick={() => (window.location.href = "/mis-reportes")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">📄 Mis reportes</button>
         </section>
 
-        <footer className="py-8 text-center text-xs text-slate-600">ALERTA OTAMENDI · Comunidad conectada</footer>
+        <footer className="py-8 text-center text-xs text-slate-600">
+  <p>ALERTA OTAMENDI · Comunidad conectada</p>
+  <p className="mt-1 text-[9px] tracking-widest text-slate-700">
+    RVS DESARROLLADOR
+  </p>
+</footer> 
       </div>
     </main>
   );
