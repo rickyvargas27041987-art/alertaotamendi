@@ -193,7 +193,7 @@ export default function PersonPatternAlerts({
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        alert(
+        window.alert(
           data.error ||
             "No se pudo actualizar la alerta de patrón."
         );
@@ -203,7 +203,7 @@ export default function PersonPatternAlerts({
       await loadAlerts();
     } catch (error) {
       console.error(error);
-      alert(
+      window.alert(
         "Error al actualizar la alerta de patrón."
       );
     } finally {
