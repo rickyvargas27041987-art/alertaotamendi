@@ -1,25 +1,36 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
+
+const VALID_CATEGORIES = [
+  "Delito / Robo",
+  "Persona sospechosa",
+  "Vehículo sospechoso",
+  "Accidente",
+  "Incendio",
+  "Emergencia",
+] as const;
 
 type AiAnalysis = {
-  category:
-    | "Delito / Robo"
-    | "Persona sospechosa"
-    | "Vehículo sospechoso"
-    | "Accidente"
-    | "Incendio"
-    | "Emergencia";
-
-  priority:
-    | "critical"
-    | "high"
-    | "medium"
-    | "low";
-
+  category: (typeof VALID_CATEGORIES)[number];
+  priority: "critical" | "high" | "medium" | "low";
   summary: string;
   confidence: number;
   possibleSpam: boolean;
   reason: string;
 };
+
+async function isAdminAuthenticated() {
+  const secret = process.env.ADMIN_SESSION_SECRET;
+
+  if (!secret) {
+    return false;
+  }
+
+  const cookieStore = await cookies();
+
+  return cookieStore.get("admin_session")?.value === secret;
+}
 
 function findOutputText(data: any): string | null {
   if (
@@ -54,39 +65,62 @@ function findOutputText(data: any): string | null {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-
-    const {
-      category,
-      description,
-      latitude,
-      longitude,
-    } = body;
-
-    if (
-      typeof description !== "string" ||
-      description.trim().length < 3
-    ) {
+    if (!(await isAdminAuthenticated())) {
       return NextResponse.json(
         {
           success: false,
-          error: "Falta una descripción válida.",
+          error: "No autorizado.",
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
 
-    const apiKey =
-      process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "OPENAI_API_KEY no está configurada.",
+          error: "OPENAI_API_KEY no está configurada.",
         },
         { status: 500 }
+      );
+    }
+
+    const body = await request.json();
+    const reportId = Number(body.reportId);
+
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "ID de reporte inválido.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const report = await prisma.report.findUnique({
+      where: {
+        id: reportId,
+      },
+      select: {
+        id: true,
+        category: true,
+        description: true,
+        latitude: true,
+        longitude: true,
+        createdAt: true,
+      },
+    });
+
+    if (!report) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Reporte no encontrado.",
+        },
+        { status: 404 }
       );
     }
 
@@ -98,21 +132,24 @@ Analizás reportes enviados por vecinos.
 
 DATOS DEL REPORTE
 
+Número:
+#${report.id}
+
 Categoría elegida:
-${category || "Sin categoría"}
+${report.category}
 
 Descripción:
-${description.trim()}
+${report.description}
 
 Ubicación:
 ${
-  latitude !== null &&
-  latitude !== undefined &&
-  longitude !== null &&
-  longitude !== undefined
-    ? `Latitud ${latitude}, longitud ${longitude}`
+  report.latitude !== null && report.longitude !== null
+    ? `Latitud ${report.latitude}, longitud ${report.longitude}`
     : "No disponible"
 }
+
+Fecha:
+${report.createdAt.toISOString()}
 
 REGLAS
 
@@ -123,52 +160,39 @@ REGLAS
 - possibleSpam solo debe ser true si hay señales claras
   de prueba, texto absurdo, publicidad o contenido irrelevante.
 - confidence debe estar entre 0 y 1.
+- Si existe peligro inmediato, violencia, delito en curso,
+  incendio activo o riesgo grave para personas, usá critical.
+- Usá high para hechos importantes que requieren revisión rápida.
+- Usá medium para hechos relevantes sin peligro inmediato evidente.
+- Usá low para información poco urgente, ambigua o posiblemente irrelevante.
 `.trim();
 
     const response = await fetch(
       "https://api.openai.com/v1/responses",
       {
         method: "POST",
-
         headers: {
-          Authorization:
-            `Bearer ${apiKey}`,
-          "Content-Type":
-            "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           model: "gpt-5.6-luna",
-
           reasoning: {
             effort: "none",
           },
-
           input: prompt,
-
           text: {
             format: {
               type: "json_schema",
-              name:
-                "alerta_otamendi_analysis",
+              name: "alerta_otamendi_analysis",
               strict: true,
-
               schema: {
                 type: "object",
-
                 properties: {
                   category: {
                     type: "string",
-                    enum: [
-                      "Delito / Robo",
-                      "Persona sospechosa",
-                      "Vehículo sospechoso",
-                      "Accidente",
-                      "Incendio",
-                      "Emergencia",
-                    ],
+                    enum: [...VALID_CATEGORIES],
                   },
-
                   priority: {
                     type: "string",
                     enum: [
@@ -178,26 +202,21 @@ REGLAS
                       "low",
                     ],
                   },
-
                   summary: {
                     type: "string",
                   },
-
                   confidence: {
                     type: "number",
                     minimum: 0,
                     maximum: 1,
                   },
-
                   possibleSpam: {
                     type: "boolean",
                   },
-
                   reason: {
                     type: "string",
                   },
                 },
-
                 required: [
                   "category",
                   "priority",
@@ -206,9 +225,7 @@ REGLAS
                   "possibleSpam",
                   "reason",
                 ],
-
-                additionalProperties:
-                  false,
+                additionalProperties: false,
               },
             },
           },
@@ -216,8 +233,7 @@ REGLAS
       }
     );
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
     if (!response.ok) {
       console.error(
@@ -229,17 +245,14 @@ REGLAS
       return NextResponse.json(
         {
           success: false,
-          error:
-            "OpenAI rechazó la solicitud.",
-          openAiStatus:
-            response.status,
+          error: "OpenAI rechazó la solicitud.",
+          openAiStatus: response.status,
         },
         { status: 502 }
       );
     }
 
-    const outputText =
-      findOutputText(data);
+    const outputText = findOutputText(data);
 
     if (!outputText) {
       console.error(
@@ -260,8 +273,7 @@ REGLAS
     let analysis: AiAnalysis;
 
     try {
-      analysis =
-        JSON.parse(outputText) as AiAnalysis;
+      analysis = JSON.parse(outputText) as AiAnalysis;
     } catch (error) {
       console.error(
         "JSON IA inválido:",
@@ -279,9 +291,39 @@ REGLAS
       );
     }
 
+    const updatedReport = await prisma.report.update({
+      where: {
+        id: report.id,
+      },
+      data: {
+        aiAnalyzed: true,
+        aiCategory: analysis.category,
+        aiPriority: analysis.priority,
+        aiSummary: analysis.summary,
+        aiConfidence: analysis.confidence,
+        aiPossibleSpam: analysis.possibleSpam,
+        aiReason: analysis.reason,
+        aiAnalyzedAt: new Date(),
+      },
+      select: {
+        id: true,
+        category: true,
+        status: true,
+        aiAnalyzed: true,
+        aiCategory: true,
+        aiPriority: true,
+        aiSummary: true,
+        aiConfidence: true,
+        aiPossibleSpam: true,
+        aiReason: true,
+        aiAnalyzedAt: true,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       analysis,
+      report: updatedReport,
     });
   } catch (error) {
     console.error(
