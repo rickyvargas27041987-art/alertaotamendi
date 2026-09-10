@@ -48,6 +48,19 @@ type NearbyReport = {
   distanceKm: number;
 };
 
+type VehicleComparison = {
+  possibleMatch: boolean;
+  confidence: number;
+  reason: string;
+  detectedPlate: string | null;
+  detectedMake: string | null;
+  detectedModel: string | null;
+  detectedColor: string | null;
+  detectedVehicleType: string | null;
+  detectedDistinctive: string | null;
+  visualSummary: string | null;
+};
+
 /* =========================================================
    ADMIN
 ========================================================= */
@@ -144,6 +157,147 @@ function findOutputText(
 }
 
 /* =========================================================
+   COMPARAR FOTO NUEVA CON VEHÍCULO EN SEGUIMIENTO
+========================================================= */
+
+async function compareVehicleImages(params: {
+  apiKey: string;
+  referenceImageUrl: string;
+  candidateImageUrl: string;
+  referenceDescription: string;
+}): Promise<VehicleComparison | null> {
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.6-luna",
+        reasoning: {
+          effort: "none",
+        },
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `
+Sos un sistema de apoyo visual para un Centro de Monitoreo.
+
+Vas a recibir DOS fotografías:
+
+IMAGEN 1:
+Vehículo de referencia que ya está en seguimiento.
+
+Datos previamente observados del vehículo de referencia:
+${params.referenceDescription}
+
+IMAGEN 2:
+Fotografía de un reporte nuevo.
+
+Tu tarea es evaluar si el vehículo visible en la IMAGEN 2 podría ser el mismo vehículo de la IMAGEN 1.
+
+REGLAS IMPORTANTES:
+- Esto es solamente una POSIBLE COINCIDENCIA, nunca una identificación definitiva.
+- No identifiques personas.
+- No inventes patente, marca, modelo ni detalles que no sean visibles.
+- Una patente solamente cuenta como coincidencia fuerte si es claramente legible.
+- El color por sí solo NO alcanza.
+- El tipo de vehículo por sí solo NO alcanza.
+- Considerá conjuntamente carrocería, color, marca/modelo si son observables, ópticas, llantas, daños, calcomanías, accesorios y otros rasgos distintivos.
+- Tené en cuenta que las fotos pueden tener distinto ángulo, distancia, iluminación o calidad.
+- Si las imágenes son insuficientes o muestran vehículos claramente distintos, possibleMatch debe ser false.
+- confidence debe estar entre 0 y 1.
+- Para possibleMatch=true debe existir evidencia visual razonable y confidence debe ser al menos 0.75.
+- reason debe explicar brevemente qué coincide y qué genera incertidumbre.
+
+También describí únicamente los datos que realmente puedan observarse en la IMAGEN 2.
+                `.trim(),
+              },
+              {
+                type: "input_image",
+                image_url: params.referenceImageUrl,
+                detail: "high",
+              },
+              {
+                type: "input_image",
+                image_url: params.candidateImageUrl,
+                detail: "high",
+              },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "vehicle_match_analysis",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                possibleMatch: { type: "boolean" },
+                confidence: {
+                  type: "number",
+                  minimum: 0,
+                  maximum: 1,
+                },
+                reason: { type: "string" },
+                detectedPlate: { type: ["string", "null"] },
+                detectedMake: { type: ["string", "null"] },
+                detectedModel: { type: ["string", "null"] },
+                detectedColor: { type: ["string", "null"] },
+                detectedVehicleType: { type: ["string", "null"] },
+                detectedDistinctive: { type: ["string", "null"] },
+                visualSummary: { type: ["string", "null"] },
+              },
+              required: [
+                "possibleMatch",
+                "confidence",
+                "reason",
+                "detectedPlate",
+                "detectedMake",
+                "detectedModel",
+                "detectedColor",
+                "detectedVehicleType",
+                "detectedDistinctive",
+                "visualSummary",
+              ],
+              additionalProperties: false,
+            },
+          },
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        "OpenAI error comparando vehículos:",
+        response.status,
+        data
+      );
+      return null;
+    }
+
+    const outputText = findOutputText(data);
+
+    if (!outputText) {
+      console.error("Comparación visual sin output_text.");
+      return null;
+    }
+
+    return JSON.parse(outputText) as VehicleComparison;
+  } catch (error) {
+    console.error("Error comparando imágenes de vehículos:", error);
+    return null;
+  }
+}
+
+/* =========================================================
    POST
    ANALIZAR REPORTE CON IA
 ========================================================= */
@@ -233,6 +387,7 @@ export async function POST(
           latitude: true,
           longitude: true,
           createdAt: true,
+          imageUrl: true,
         },
       });
 
@@ -809,6 +964,114 @@ tu análisis es solamente apoyo para el operador.
       });
 
     /* =====================================================
+       COMPARAR FOTO CON VEHÍCULOS ACTIVOS EN SEGUIMIENTO
+    ===================================================== */
+
+    const vehicleMatches: Array<{
+      id: number;
+      vehicleWatchId: number;
+      sourceReportId: number;
+      reportId: number;
+      confidence: number;
+      reason: string;
+      imageUrl: string;
+      status: string;
+    }> = [];
+
+    if (report.imageUrl) {
+      const activeVehicleWatches = await prisma.vehicleWatch.findMany({
+        where: {
+          active: true,
+          sourceReportId: {
+            not: report.id,
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 10,
+      });
+
+      for (const vehicle of activeVehicleWatches) {
+        const referenceDescription = [
+          vehicle.vehicleType ? `Tipo: ${vehicle.vehicleType}` : null,
+          vehicle.make ? `Marca: ${vehicle.make}` : null,
+          vehicle.model ? `Modelo: ${vehicle.model}` : null,
+          vehicle.color ? `Color: ${vehicle.color}` : null,
+          vehicle.plate ? `Patente: ${vehicle.plate}` : null,
+          vehicle.distinctive ? `Rasgos: ${vehicle.distinctive}` : null,
+          vehicle.visualSummary
+            ? `Resumen visual: ${vehicle.visualSummary}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        const comparison = await compareVehicleImages({
+          apiKey,
+          referenceImageUrl: vehicle.imageUrl,
+          candidateImageUrl: report.imageUrl,
+          referenceDescription:
+            referenceDescription || "Sin datos descriptivos adicionales.",
+        });
+
+        if (!comparison) {
+          continue;
+        }
+
+        const confidence = Math.max(
+          0,
+          Math.min(1, comparison.confidence)
+        );
+
+        if (!comparison.possibleMatch || confidence < 0.75) {
+          continue;
+        }
+
+        const savedMatch = await prisma.vehicleMatch.upsert({
+          where: {
+            vehicleWatchId_reportId: {
+              vehicleWatchId: vehicle.id,
+              reportId: report.id,
+            },
+          },
+          update: {
+            sourceReportId: vehicle.sourceReportId,
+            imageUrl: report.imageUrl,
+            confidence,
+            reason: comparison.reason,
+            detectedPlate: comparison.detectedPlate,
+            detectedMake: comparison.detectedMake,
+            detectedModel: comparison.detectedModel,
+            detectedColor: comparison.detectedColor,
+            detectedVehicleType: comparison.detectedVehicleType,
+            detectedDistinctive: comparison.detectedDistinctive,
+            visualSummary: comparison.visualSummary,
+            status: "pendiente",
+          },
+          create: {
+            vehicleWatchId: vehicle.id,
+            reportId: report.id,
+            sourceReportId: vehicle.sourceReportId,
+            imageUrl: report.imageUrl,
+            confidence,
+            reason: comparison.reason,
+            detectedPlate: comparison.detectedPlate,
+            detectedMake: comparison.detectedMake,
+            detectedModel: comparison.detectedModel,
+            detectedColor: comparison.detectedColor,
+            detectedVehicleType: comparison.detectedVehicleType,
+            detectedDistinctive: comparison.detectedDistinctive,
+            visualSummary: comparison.visualSummary,
+            status: "pendiente",
+          },
+        });
+
+        vehicleMatches.push(savedMatch);
+      }
+    }
+
+    /* =====================================================
        RESPUESTA AL CENTRO DE MONITOREO
     ===================================================== */
 
@@ -816,6 +1079,8 @@ tu análisis es solamente apoyo para el operador.
       success: true,
 
       analysis,
+
+      vehicleMatches,
 
       relatedSearch: {
         radiusKm:
