@@ -78,7 +78,7 @@ async function obtenerLocalidades(
       provincia
     )}` +
     `&campos=id,nombre,centroide` +
-    `&max=1000`
+   `&max=1000` +
     `&orden=nombre`;
 
   const data =
