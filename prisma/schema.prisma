@@ -29,6 +29,36 @@ model Report {
   aiAnalyzedAt    DateTime?
 }
 
+model VehicleWatch {
+  id              Int      @id @default(autoincrement())
+
+  // Reporte donde apareció originalmente el vehículo
+  sourceReportId  Int
+
+  // Foto de referencia
+  imageUrl        String
+
+  // Datos que puede identificar la IA
+  plate           String?
+  make            String?
+  model           String?
+  color           String?
+  vehicleType     String?
+  distinctive     String?
+
+  // Resumen visual generado por IA
+  visualSummary   String?
+
+  // Seguimiento
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sourceReportId])
+  @@index([active])
+  @@index([plate])
+}
+
 model PushSubscription {
   id        Int      @id @default(autoincrement())
   endpoint  String   @unique
