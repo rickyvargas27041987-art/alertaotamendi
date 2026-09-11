@@ -196,7 +196,17 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [vehicleWatches, setVehicleWatches] = useState<VehicleWatch[]>([]);
   const [vehicleWatchLoading, setVehicleWatchLoading] = useState(false);
   const [vehicleWatchActionId, setVehicleWatchActionId] = useState<number | null>(null);
-  const [currentUser, setCurrentUser] = useState<{role:string;name:string}|null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    role: string;
+    name: string;
+    zones?: Array<{ province: string; district: string; locality: string | null }>;
+  } | null>(null);
+  const [mapFocusTarget, setMapFocusTarget] = useState<{
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    key: number;
+  } | null>(null);
 
   const ultimaAlertaIdRef = useRef<number | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
@@ -503,6 +513,19 @@ const [aiError, setAiError] = useState<string | null>(null);
   }
 }
   function returnToMap() {
+    // Conservamos las coordenadas antes de cerrar el detalle.
+    // Si existen, el mapa vuelve exactamente a ese marcador mostrando
+    // aproximadamente 1,5 km alrededor.
+    if (selectedReport?.latitude !== null && selectedReport?.longitude !== null &&
+        selectedReport?.latitude !== undefined && selectedReport?.longitude !== undefined) {
+      setMapFocusTarget({
+        latitude: selectedReport.latitude,
+        longitude: selectedReport.longitude,
+        radiusMeters: 1500,
+        key: Date.now(),
+      });
+    }
+
     setSelectedReport(null);
     window.setTimeout(() => {
       mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -765,6 +788,8 @@ const [aiError, setAiError] = useState<string | null>(null);
               mode="admin"
               onSelectReport={(report) => openReport(report as Report)}
               heightClassName="h-[calc(100vh-285px)] min-h-[360px] max-h-[500px]"
+              focusTarget={mapFocusTarget}
+              monitorZones={currentUser?.zones ?? []}
             />
           </div>
 

@@ -45,11 +45,26 @@ type Report = {
   createdAt: string;
 };
 
+type MapFocusTarget = {
+  latitude: number;
+  longitude: number;
+  radiusMeters?: number;
+  key: number;
+};
+
+type MonitorZone = {
+  province: string;
+  district: string;
+  locality: string | null;
+};
+
 type Props = {
   reports: Report[];
   mode?: "admin" | "public";
   onSelectReport?: (report: Report) => void;
   heightClassName?: string;
+  focusTarget?: MapFocusTarget | null;
+  monitorZones?: MonitorZone[];
 };
 
 type UserPosition = {
@@ -405,11 +420,13 @@ function AdminViewport({
   resetKey,
   selectedLocation,
   locationKey,
+  focusTarget,
 }: {
   reports: Report[];
   resetKey: number;
   selectedLocation: AdminSelectedLocation;
   locationKey: number;
+  focusTarget: MapFocusTarget | null;
 }) {
   const map = useMap();
 
@@ -435,6 +452,22 @@ function AdminViewport({
 
     const timer = window.setTimeout(() => {
       map.invalidateSize();
+
+      // Una orden explícita (por ejemplo «Volver al mapa» desde un reporte)
+      // siempre tiene prioridad sobre la localidad seleccionada.
+      if (focusTarget) {
+        const bounds = L.latLng(
+          focusTarget.latitude,
+          focusTarget.longitude
+        ).toBounds((focusTarget.radiusMeters ?? 1500) * 2);
+
+        map.fitBounds(bounds, {
+          padding: [24, 24],
+          animate: true,
+          duration: 0.6,
+        });
+        return;
+      }
 
       if (selectedLocation) {
         map.setView(
@@ -496,6 +529,7 @@ function AdminViewport({
     resetKey,
     selectedLocation,
     locationKey,
+    focusTarget?.key,
   ]);
 
   return null;
@@ -578,6 +612,8 @@ export default function MapaAlertasLeaflet({
   mode = "public",
   onSelectReport,
   heightClassName = "h-[460px] md:h-[560px]",
+  focusTarget = null,
+  monitorZones = [],
 }: Props) {
   const [filtro, setFiltro] =
     useState("Todos");
@@ -617,6 +653,32 @@ export default function MapaAlertasLeaflet({
   const [adminLocationKey, setAdminLocationKey] = useState(0);
 
   const pendingAdminLocalityIdRef = useRef<string | null>(null);
+
+  // Zona principal del usuario. Para el administrador legado, que no tiene
+  // zonas asignadas en la base, usamos Otamendi como jurisdicción principal.
+  const primaryJurisdiction = useMemo<AdminSelectedLocation>(() => {
+    const zone = monitorZones[0];
+    if (!zone) {
+      return { latitude: OTAMENDI_CENTER[0], longitude: OTAMENDI_CENTER[1], label: "Comandante Nicanor Otamendi" };
+    }
+
+    if (zone.locality) {
+      const normalized = (value: string) => value.trim().toLocaleLowerCase("es-AR");
+      for (const provincia of provinciasArgentina) {
+        const localidades = localidadesPorProvincia(provincia.id);
+        const match = localidades.find((item) => normalized(item.nombre) === normalized(zone.locality));
+        if (match) {
+          return {
+            latitude: match.lat,
+            longitude: match.lon,
+            label: `${zone.locality}, ${zone.district}`,
+          };
+        }
+      }
+    }
+
+    return { latitude: OTAMENDI_CENTER[0], longitude: OTAMENDI_CENTER[1], label: zone.district || "Mi jurisdicción" };
+  }, [monitorZones]);
 
   const mountedRef =
     useRef(true);
@@ -1066,6 +1128,18 @@ export default function MapaAlertasLeaflet({
                 <p className="text-xs font-black text-white">📍 Buscar localidad</p>
                 <p className="mt-1 text-[10px] text-slate-500">Solo modifica la vista del Centro de Monitoreo.</p>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!primaryJurisdiction) return;
+                  setAdminSelectedLocation(primaryJurisdiction);
+                  setAdminLocationKey((value) => value + 1);
+                }}
+                className="rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-black text-white hover:bg-emerald-500"
+                title={primaryJurisdiction?.label ?? "Mi jurisdicción"}
+              >
+                🎯 Mi jurisdicción
+              </button>
               {adminSelectedLocation && (
                 <button
                   type="button"
@@ -1212,6 +1286,7 @@ export default function MapaAlertasLeaflet({
                 }
                 selectedLocation={adminSelectedLocation}
                 locationKey={adminLocationKey}
+                focusTarget={focusTarget}
               />
             ) : (
               <PublicViewport

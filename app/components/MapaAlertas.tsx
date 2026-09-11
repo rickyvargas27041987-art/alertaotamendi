@@ -12,11 +12,26 @@ type Report = {
   createdAt: string;
 };
 
+type MapFocusTarget = {
+  latitude: number;
+  longitude: number;
+  radiusMeters?: number;
+  key: number;
+};
+
+type MonitorZone = {
+  province: string;
+  district: string;
+  locality: string | null;
+};
+
 type Props = {
   reports: Report[];
   mode?: "admin" | "public";
   onSelectReport?: (report: Report) => void;
   heightClassName?: string;
+  focusTarget?: MapFocusTarget | null;
+  monitorZones?: MonitorZone[];
 };
 
 /*
