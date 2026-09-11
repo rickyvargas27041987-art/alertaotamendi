@@ -1,22 +1,10 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-
-async function isAdminAuthenticated() {
-  const secret = process.env.ADMIN_SESSION_SECRET;
-
-  if (!secret) {
-    return false;
-  }
-
-  const cookieStore = await cookies();
-
-  return cookieStore.get("admin_session")?.value === secret;
-}
+import { getMonitorActor } from "@/lib/monitorAuth";
 
 export async function GET() {
   try {
-    if (!(await isAdminAuthenticated())) {
+    if (!(await getMonitorActor())) {
       return NextResponse.json(
         {
           success: false,
@@ -73,7 +61,7 @@ export async function PATCH(
   request: Request
 ) {
   try {
-    if (!(await isAdminAuthenticated())) {
+    if (!(await getMonitorActor())) {
       return NextResponse.json(
         {
           success: false,

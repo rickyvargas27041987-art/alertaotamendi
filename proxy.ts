@@ -1,26 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  const isLoginPage = pathname === "/admin/login";
-  const isAdminRoute = pathname.startsWith("/admin");
-
-  if (!isAdminRoute || isLoginPage) {
-    return NextResponse.next();
-  }
-
-  const session = request.cookies.get("admin_session")?.value;
-  const expectedSession = process.env.ADMIN_SESSION_SECRET;
-
-  if (!session || !expectedSession || session !== expectedSession) {
-    const loginUrl = new URL("/admin/login", request.url);
-    return NextResponse.redirect(loginUrl);
-  }
-
+  if (!pathname.startsWith("/admin") || pathname === "/admin/login") return NextResponse.next();
+  const hasLegacy = Boolean(request.cookies.get("admin_session")?.value);
+  const hasUser = Boolean(request.cookies.get("monitor_session")?.value);
+  if (!hasLegacy && !hasUser) return NextResponse.redirect(new URL("/admin/login", request.url));
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: ["/admin/:path*"],
-};
+export const config = { matcher: ["/admin/:path*"] };

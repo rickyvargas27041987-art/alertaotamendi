@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ export default function AdminLoginPage() {
       const response = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await response.json();
 
@@ -45,6 +46,12 @@ export default function AdminLoginPage() {
         <p className="mt-2 text-center text-sm text-slate-400">Acceso privado para operadores autorizados.</p>
 
         <form onSubmit={handleSubmit} className="mt-7">
+          <label className="text-sm font-semibold text-slate-300">Usuario</label>
+          <input
+            type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+            placeholder="Tu usuario (admin para acceso original)" autoComplete="username"
+            className="mt-2 mb-4 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-base outline-none placeholder:text-slate-600 focus:border-red-500"
+          />
           <label className="text-sm font-semibold text-slate-300">Contraseña de acceso</label>
           <input
             type="password"
@@ -53,7 +60,6 @@ export default function AdminLoginPage() {
             placeholder="Ingresá tu contraseña"
             autoComplete="current-password"
             required
-            autoFocus
             className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-base outline-none placeholder:text-slate-600 focus:border-red-500"
           />
 

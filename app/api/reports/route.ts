@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { audit, canOperateReport, getMonitorActor } from "@/lib/monitorAuth";
 import {
   calcularDistanciaKm,
   sendWebPush,
@@ -48,20 +48,21 @@ const VALID_STATUSES = [
    ADMIN
 ========================================================= */
 
-async function isAdminAuthenticated() {
-  const adminSessionSecret =
-    process.env.ADMIN_SESSION_SECRET;
-
-  if (!adminSessionSecret) {
-    return false;
+async function resolveJurisdiction(latitude: number, longitude: number) {
+  try {
+    const url = `https://apis.datos.gob.ar/georef/api/ubicacion?lat=${latitude}&lon=${longitude}`;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return { province: null, district: null, locality: null };
+    const data = await response.json();
+    const u = data?.ubicacion;
+    return {
+      province: u?.provincia?.nombre ?? null,
+      district: u?.municipio?.nombre ?? u?.departamento?.nombre ?? null,
+      locality: u?.localidad?.nombre ?? null,
+    };
+  } catch {
+    return { province: null, district: null, locality: null };
   }
-
-  const cookieStore = await cookies();
-
-  return (
-    cookieStore.get("admin_session")
-      ?.value === adminSessionSecret
-  );
 }
 
 /* =========================================================
@@ -421,9 +422,8 @@ export async function GET() {
     /*
      * ADMINISTRADOR
      */
-    if (
-      await isAdminAuthenticated()
-    ) {
+    const actor = await getMonitorActor();
+    if (actor) {
       const reports =
         await prisma.report.findMany(
           {
@@ -652,6 +652,8 @@ export async function POST(
        GUARDAR REPORTE
     ----------------------------------------------------- */
 
+    const jurisdiction = await resolveJurisdiction(latitude, longitude);
+
     const newReport =
       await prisma.report.create(
         {
@@ -668,6 +670,9 @@ export async function POST(
             imageUrl,
             videoUrl,
             audioUrl,
+            province: jurisdiction.province,
+            district: jurisdiction.district,
+            locality: jurisdiction.locality,
           },
         }
       );
@@ -742,11 +747,8 @@ export async function PATCH(
   request: Request
 ) {
   try {
-    if (
-      !(
-        await isAdminAuthenticated()
-      )
-    ) {
+    const actor = await getMonitorActor();
+    if (!actor) {
       return NextResponse.json(
         {
           success: false,
@@ -792,6 +794,15 @@ export async function PATCH(
       );
     }
 
+    const currentReport = await prisma.report.findUnique({
+      where: { id },
+      select: { id: true, province: true, district: true, locality: true, status: true },
+    });
+    if (!currentReport) return NextResponse.json({ success: false, message: "Reporte no encontrado." }, { status: 404 });
+    if (!canOperateReport(actor, currentReport)) {
+      return NextResponse.json({ success: false, message: "No tenés autorización para modificar reportes de esta jurisdicción." }, { status: 403 });
+    }
+
     const updatedReport =
       await prisma.report.update(
         {
@@ -804,6 +815,8 @@ export async function PATCH(
           },
         }
       );
+
+    await audit(actor, "REPORT_STATUS_CHANGED", `${currentReport.status} -> ${status}`, id);
 
     return NextResponse.json(
       {

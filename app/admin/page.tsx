@@ -196,6 +196,7 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [vehicleWatches, setVehicleWatches] = useState<VehicleWatch[]>([]);
   const [vehicleWatchLoading, setVehicleWatchLoading] = useState(false);
   const [vehicleWatchActionId, setVehicleWatchActionId] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<{role:string;name:string}|null>(null);
 
   const ultimaAlertaIdRef = useRef<number | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
@@ -374,7 +375,11 @@ const [aiError, setAiError] = useState<string | null>(null);
 
     const interval = window.setInterval(() => void loadReports(), 3000);
 
-    return () => window.clearInterval(interval);
+  return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/me", { cache: "no-store" }).then(r => r.json()).then(d => { if (d.success) setCurrentUser(d.user); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -585,6 +590,7 @@ const [aiError, setAiError] = useState<string | null>(null);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      {currentUser?.role === "ADMIN" && <a href="/admin/usuarios" className="fixed right-4 top-4 z-[9999] rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white shadow-xl">👥 Usuarios</a>}
       <PersonPatternAlerts
   onOpenReport={(reportId) => {
     const report = reports.find(

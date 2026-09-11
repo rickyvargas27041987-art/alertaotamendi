@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { canOperateReport, getMonitorActor } from "@/lib/monitorAuth";
 
 const VALID_CATEGORIES = [
   "Delito / Robo",
@@ -64,20 +64,6 @@ type VehicleComparison = {
 /* =========================================================
    ADMIN
 ========================================================= */
-
-async function isAdminAuthenticated() {
-  const secret = process.env.ADMIN_SESSION_SECRET;
-
-  if (!secret) {
-    return false;
-  }
-
-  const cookieStore = await cookies();
-
-  return (
-    cookieStore.get("admin_session")?.value === secret
-  );
-}
 
 /* =========================================================
    DISTANCIA ENTRE DOS COORDENADAS
@@ -310,9 +296,8 @@ export async function POST(
        SEGURIDAD ADMIN
     ----------------------------------------------------- */
 
-    if (
-      !(await isAdminAuthenticated())
-    ) {
+    const actor = await getMonitorActor();
+    if (!actor) {
       return NextResponse.json(
         {
           success: false,
@@ -388,6 +373,9 @@ export async function POST(
           longitude: true,
           createdAt: true,
           imageUrl: true,
+          province: true,
+          district: true,
+          locality: true,
         },
       });
 
@@ -402,6 +390,10 @@ export async function POST(
           status: 404,
         }
       );
+    }
+
+    if (!canOperateReport(actor, report)) {
+      return NextResponse.json({ success: false, error: "No tenés autorización para analizar reportes fuera de tu jurisdicción." }, { status: 403 });
     }
 
     /* =====================================================

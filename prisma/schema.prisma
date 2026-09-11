@@ -18,6 +18,11 @@ model Report {
   audioUrl    String?
   createdAt   DateTime @default(now())
 
+  // JURISDICCIÓN (resuelta automáticamente desde la ubicación)
+  province    String?
+  district    String?
+  locality    String?
+
   // ANALISIS DE INTELIGENCIA ARTIFICIAL
   aiAnalyzed      Boolean  @default(false)
   aiCategory      String?
@@ -155,4 +160,64 @@ model PushSubscription {
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+
+model MonitoringUser {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("OPERATOR")
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  zones        UserZone[]
+  sessions     MonitorSession[]
+  auditLogs    AuditLog[]
+
+  @@index([active])
+  @@index([role])
+}
+
+model UserZone {
+  id        Int    @id @default(autoincrement())
+  userId    Int
+  province  String
+  district  String
+  locality  String?
+  user      MonitoringUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([province, district, locality])
+}
+
+model MonitorSession {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      MonitoringUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  userId        Int?
+  actorName     String
+  actorUsername String
+  action        String
+  details       String?
+  reportId      Int?
+  createdAt     DateTime @default(now())
+  user          MonitoringUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([reportId])
+  @@index([createdAt])
 }
