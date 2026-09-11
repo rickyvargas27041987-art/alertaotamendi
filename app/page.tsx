@@ -488,7 +488,23 @@ export default function Home() {
       setIsRecording(true);
     } catch (error) {
       console.error("Error al acceder al micrófono:", error);
-      setMessage("❌ No se pudo acceder al micrófono.");
+
+      const errorName =
+        error instanceof DOMException
+          ? error.name
+          : error instanceof Error
+            ? error.name
+            : "Error";
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : String(error);
+
+      setMessage(
+        `❌ Micrófono: ${errorName} — ${errorMessage}`
+      );
+
       setIsRecording(false);
     }
   }
