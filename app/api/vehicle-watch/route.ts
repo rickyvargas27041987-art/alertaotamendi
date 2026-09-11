@@ -12,6 +12,152 @@ type VehicleVisualAnalysis = {
   visualSummary: string | null;
 };
 
+function findOutputText(data: any): string | null {
+  if (
+    typeof data?.output_text === "string" &&
+    data.output_text.trim()
+  ) {
+    return data.output_text.trim();
+  }
+
+  if (!Array.isArray(data?.output)) {
+    return null;
+  }
+
+  for (const item of data.output) {
+    if (!Array.isArray(item?.content)) {
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (
+        content?.type === "output_text" &&
+        typeof content?.text === "string" &&
+        content.text.trim()
+      ) {
+        return content.text.trim();
+      }
+    }
+  }
+
+  return null;
+}
+
+async function analyzeVehicleImage(
+  imageUrl: string
+): Promise<VehicleVisualAnalysis | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    console.error("OPENAI_API_KEY no configurada.");
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-5.6-luna",
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: `
+Analizá esta fotografía para un sistema de monitoreo de vehículos.
+
+Tu tarea es describir únicamente lo que realmente pueda observarse.
+
+IMPORTANTE:
+- No inventes patente, marca ni modelo.
+- Si una patente no es claramente legible, devolver null.
+- Si una marca o modelo no se puede determinar con suficiente seguridad, devolver null.
+- No identificar personas.
+- Describir detalles útiles para reconocer el vehículo en fotografías futuras.
+
+Devolver:
+- plate: patente visible o null
+- make: marca aproximada o null
+- model: modelo aproximado o null
+- color: color principal o null
+- vehicleType: tipo de vehículo, por ejemplo auto, camioneta, moto, utilitario
+- distinctive: daños, calcomanías, accesorios, modificaciones u otros rasgos distintivos
+- visualSummary: resumen breve del aspecto general del vehículo
+                  `.trim(),
+                },
+                {
+                  type: "input_image",
+                  image_url: imageUrl,
+                  detail: "high",
+                },
+              ],
+            },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: "vehicle_visual_analysis",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  plate: { type: ["string", "null"] },
+                  make: { type: ["string", "null"] },
+                  model: { type: ["string", "null"] },
+                  color: { type: ["string", "null"] },
+                  vehicleType: { type: ["string", "null"] },
+                  distinctive: { type: ["string", "null"] },
+                  visualSummary: { type: ["string", "null"] },
+                },
+                required: [
+                  "plate",
+                  "make",
+                  "model",
+                  "color",
+                  "vehicleType",
+                  "distinctive",
+                  "visualSummary",
+                ],
+                additionalProperties: false,
+              },
+            },
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        "Error OpenAI analizando vehículo:",
+        response.status,
+        errorText
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    const outputText = findOutputText(data);
+
+    if (!outputText) {
+      console.error("OpenAI no devolvió análisis visual.");
+      return null;
+    }
+
+    return JSON.parse(outputText) as VehicleVisualAnalysis;
+  } catch (error) {
+    console.error("Error analizando imagen del vehículo:", error);
+    return null;
+  }
+}
+
 // =========================================================
 // LISTAR VEHÍCULOS EN SEGUIMIENTO
 // =========================================================
