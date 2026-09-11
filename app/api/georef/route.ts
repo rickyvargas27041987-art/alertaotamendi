@@ -271,6 +271,50 @@ export async function GET(
     }
 
     /* -----------------------------------------------------
+       LÍMITES DE LOCALIDAD CENSAL
+       Devuelve un bounding box oficial para que el mapa use
+       el zoom máximo posible sin cortar la jurisdicción.
+    ----------------------------------------------------- */
+
+    if (tipo === "limites-localidad") {
+      const id = searchParams.get("id")?.trim();
+      if (!id) {
+        return NextResponse.json({ success: false, message: "Falta id de localidad." }, { status: 400 });
+      }
+
+      const url = `${GEOREF_BASE}/localidades_censales?id=${encodeURIComponent(id)}&formato=geojson&max=1`;
+      const data = await fetchGeoRef(url);
+      const feature = Array.isArray(data.features) ? data.features[0] : null;
+      const coordinates = feature?.geometry?.coordinates;
+
+      const points: Array<[number, number]> = [];
+      const collect = (value: unknown) => {
+        if (!Array.isArray(value)) return;
+        if (value.length >= 2 && typeof value[0] === "number" && typeof value[1] === "number") {
+          points.push([value[1], value[0]]); // GeoJSON lon/lat -> Leaflet lat/lon
+          return;
+        }
+        for (const child of value) collect(child);
+      };
+      collect(coordinates);
+
+      if (points.length === 0) {
+        return NextResponse.json({ success: false, message: "La localidad no tiene geometría disponible." }, { status: 404 });
+      }
+
+      const lats = points.map((p) => p[0]);
+      const lons = points.map((p) => p[1]);
+      const bounds = [
+        [Math.min(...lats), Math.min(...lons)],
+        [Math.max(...lats), Math.max(...lons)],
+      ];
+
+      return NextResponse.json({ success: true, bounds }, {
+        headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" },
+      });
+    }
+
+    /* -----------------------------------------------------
        TIPO INVÁLIDO
     ----------------------------------------------------- */
 

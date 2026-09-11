@@ -78,6 +78,8 @@ type AdminSelectedLocation = {
   latitude: number;
   longitude: number;
   label: string;
+  localityId?: string;
+  bounds?: [[number, number], [number, number]];
 } | null;
 
 /* =========================================================
@@ -470,11 +472,21 @@ function AdminViewport({
       }
 
       if (selectedLocation) {
-        map.setView(
-          [selectedLocation.latitude, selectedLocation.longitude],
-          14,
-          { animate: true }
-        );
+        if (selectedLocation.bounds) {
+          map.fitBounds(selectedLocation.bounds, {
+            padding: [34, 34],
+            maxZoom: 17,
+            animate: true,
+            duration: 0.6,
+          });
+        } else {
+          // Respaldo mientras no haya límites oficiales disponibles.
+          const fallbackBounds = L.latLng(
+            selectedLocation.latitude,
+            selectedLocation.longitude
+          ).toBounds(3000);
+          map.fitBounds(fallbackBounds, { padding: [34, 34], maxZoom: 16, animate: true });
+        }
         return;
       }
 
@@ -673,6 +685,7 @@ export default function MapaAlertasLeaflet({
             latitude: match.lat,
             longitude: match.lon,
             label: `${zoneLocality}, ${zone.district}`,
+            localityId: match.id,
           };
         }
       }
@@ -810,15 +823,26 @@ export default function MapaAlertasLeaflet({
     const label =
       `${localidad.nombre}${provincia ? `, ${provincia.nombre}` : ""}`;
 
-    setAdminSelectedLocation({
+    const baseLocation: NonNullable<AdminSelectedLocation> = {
       latitude: localidad.lat,
       longitude: localidad.lon,
       label,
-    });
+      localityId: localidad.id,
+    };
 
-    setAdminLocationKey(
-      (value) => value + 1
-    );
+    setAdminSelectedLocation(baseLocation);
+    setAdminLocationKey((value) => value + 1);
+
+    // Pedimos los límites oficiales de la localidad censal. Leaflet calcula
+    // automáticamente el zoom más cercano que permite verla completa.
+    fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(localidad.id)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!data?.success || !Array.isArray(data.bounds)) return;
+        setAdminSelectedLocation({ ...baseLocation, bounds: data.bounds });
+        setAdminLocationKey((value) => value + 1);
+      })
+      .catch((error) => console.warn("No se pudieron cargar límites de localidad:", error));
 
     try {
       window.localStorage.setItem(
@@ -1135,6 +1159,17 @@ export default function MapaAlertasLeaflet({
                   if (!primaryJurisdiction) return;
                   setAdminSelectedLocation(primaryJurisdiction);
                   setAdminLocationKey((value) => value + 1);
+
+                  if (primaryJurisdiction.localityId) {
+                    fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(primaryJurisdiction.localityId)}`)
+                      .then((response) => response.ok ? response.json() : null)
+                      .then((data) => {
+                        if (!data?.success || !Array.isArray(data.bounds)) return;
+                        setAdminSelectedLocation({ ...primaryJurisdiction, bounds: data.bounds });
+                        setAdminLocationKey((value) => value + 1);
+                      })
+                      .catch((error) => console.warn("No se pudieron cargar límites de jurisdicción:", error));
+                  }
                 }}
                 className="rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-black text-white hover:bg-emerald-500"
                 title={primaryJurisdiction?.label ?? "Mi jurisdicción"}
