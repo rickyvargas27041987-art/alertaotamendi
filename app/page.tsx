@@ -1099,13 +1099,20 @@ export default function Home() {
               </label>
               <button
                 type="button"
-                onPointerDown={() => void startRecording()}
-                onPointerUp={stopRecording}
-                onPointerCancel={stopRecording}
-                onPointerLeave={() => isRecording && stopRecording()}
+                onClick={() => {
+                  if (isRecording) {
+                    stopRecording();
+                  } else {
+                    void startRecording();
+                  }
+                }}
                 className={`rounded-2xl py-3 text-sm font-semibold ${isRecording ? "bg-red-600" : "bg-slate-800"}`}
               >
-                {isRecording ? "🔴 Grabando…" : audio ? "🎤 Audio ✓" : "🎤 Mantener para audio"}
+                {isRecording
+                  ? "⏹️ Detener audio"
+                  : audio
+                    ? "🎤 Audio ✓"
+                    : "🎙️ Grabar audio"}
               </button>
             <button
   onClick={() => {
