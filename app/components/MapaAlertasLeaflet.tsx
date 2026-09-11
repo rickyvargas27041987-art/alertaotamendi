@@ -662,16 +662,17 @@ export default function MapaAlertasLeaflet({
       return { latitude: OTAMENDI_CENTER[0], longitude: OTAMENDI_CENTER[1], label: "Comandante Nicanor Otamendi" };
     }
 
-    if (zone.locality) {
+    const zoneLocality = zone.locality;
+    if (zoneLocality) {
       const normalized = (value: string) => value.trim().toLocaleLowerCase("es-AR");
       for (const provincia of provinciasArgentina) {
         const localidades = localidadesPorProvincia(provincia.id);
-        const match = localidades.find((item) => normalized(item.nombre) === normalized(zone.locality));
+        const match = localidades.find((item) => normalized(item.nombre) === normalized(zoneLocality));
         if (match) {
           return {
             latitude: match.lat,
             longitude: match.lon,
-            label: `${zone.locality}, ${zone.district}`,
+            label: `${zoneLocality}, ${zone.district}`,
           };
         }
       }
