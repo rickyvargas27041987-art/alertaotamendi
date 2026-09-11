@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type PersonPatternAlert = {
   id: number;
+  category: string;
   triggerReportId: number;
   reportIds: number[];
   reportCount: number;
@@ -123,9 +124,9 @@ export default function PersonPatternAlerts({
 
       const latest = nextAlerts[0] ?? null;
 
-      const signature = latest
-        ? `${latest.id}:${latest.reportCount}:${latest.updatedAt}`
-        : null;
+      // Solo avisamos cuando NACE una alerta preventiva.
+      // Si luego se suma un 4.º/5.º reporte, no repetimos el beep.
+      const signature = latest ? String(latest.id) : null;
 
       if (!initializedRef.current) {
         initializedRef.current = true;
@@ -223,15 +224,15 @@ export default function PersonPatternAlerts({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-black">
-              ⚠️ Patrón repetido detectado
+              ⚠️ Alerta preventiva generada
             </div>
 
             <h2 className="mt-3 text-xl font-black text-white">
-              👤 {alert.reportCount} reportes posiblemente relacionados
+              {alert.category === "Vehículo sospechoso" ? "🚗" : "👤"} {alert.reportCount} reportes coincidentes
             </h2>
 
             <p className="mt-1 text-sm font-semibold text-amber-100">
-              Persona sospechosa · misma zona
+              {alert.category} · misma zona
             </p>
           </div>
 
@@ -338,7 +339,7 @@ export default function PersonPatternAlerts({
         </button>
 
         <p className="text-[10px] leading-4 text-slate-500">
-          La coincidencia es una ayuda de IA para el operador y no una identificación definitiva de una persona.
+          Esta alerta es preventiva: informa coincidencias entre reportes y no identifica ni acusa a ninguna persona.
         </p>
       </div>
     </div>

@@ -1009,6 +1009,7 @@ tu análisis es solamente apoyo para el operador.
         const recentPatternAlerts =
           await prisma.personPatternAlert.findMany({
             where: {
+              category: "Persona sospechosa",
               status: {
                 in: ["pendiente", "en_revision"],
               },
@@ -1109,6 +1110,7 @@ tu análisis es solamente apoyo para el operador.
           personPatternAlert =
             await prisma.personPatternAlert.create({
               data: {
+                category: "Persona sospechosa",
                 triggerReportId:
                   report.id,
                 reportIds:

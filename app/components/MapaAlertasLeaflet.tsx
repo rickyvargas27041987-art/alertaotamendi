@@ -58,6 +58,12 @@ type MonitorZone = {
   locality: string | null;
 };
 
+type PreventiveAlert = {
+  id: number; category: string; reportIds: number[]; reportCount: number;
+  centerLatitude: number | null; centerLongitude: number | null; radiusKm: number;
+  summary: string; status: string; createdAt: string;
+};
+
 type Props = {
   reports: Report[];
   mode?: "admin" | "public";
@@ -652,6 +658,8 @@ export default function MapaAlertasLeaflet({
   const [locating, setLocating] =
     useState(false);
 
+  const [preventiveAlerts, setPreventiveAlerts] = useState<PreventiveAlert[]>([]);
+
   const [
     locationMessage,
     setLocationMessage,
@@ -862,6 +870,24 @@ export default function MapaAlertasLeaflet({
       );
     }
   }
+
+  // En monitoreo cargamos únicamente alertas preventivas ya generadas (3+).
+  useEffect(() => {
+    if (mode !== "admin") return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/person-pattern-alerts", { cache: "no-store" });
+        const data = await response.json();
+        if (!cancelled && response.ok && data.success && Array.isArray(data.alerts)) {
+          setPreventiveAlerts(data.alerts.filter((alert: PreventiveAlert) => alert.reportCount >= 3));
+        }
+      } catch (error) { console.error("Error cargando perímetros preventivos:", error); }
+    };
+    void load();
+    const interval = window.setInterval(() => void load(), 3000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [mode]);
 
   /* =======================================================
      REPORTES FILTRADOS
@@ -1397,6 +1423,30 @@ export default function MapaAlertasLeaflet({
                   </Marker>
                 </>
               )}
+
+            {/* ALERTAS PREVENTIVAS AGRUPADAS: marcador + perímetro dinámico */}
+            {mode === "admin" && preventiveAlerts.map((alert) => {
+              if (alert.centerLatitude === null || alert.centerLongitude === null) return null;
+              const isVehicle = alert.category === "Vehículo sospechoso";
+              const color = isVehicle ? "#f59e0b" : "#fb923c";
+              const icon = L.divIcon({ className: "", html: `<div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${color};border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,.45);font-size:21px">⚠️</div>`, iconSize: [42,42], iconAnchor: [21,21], popupAnchor: [0,-22] });
+              return (
+                <div key={`preventive-${alert.id}`}>
+                  <Circle center={[alert.centerLatitude, alert.centerLongitude]} radius={Math.max(150, alert.radiusKm * 1000)} pathOptions={{ color, weight: 3, opacity: 0.8, fillColor: color, fillOpacity: 0.12, dashArray: "8 6" }} />
+                  <Marker position={[alert.centerLatitude, alert.centerLongitude]} icon={icon}>
+                    <Popup minWidth={270}>
+                      <div style={{ color: "#0f172a" }}>
+                        <strong>⚠️ ALERTA PREVENTIVA ACTIVA</strong>
+                        <div style={{ marginTop: 8, fontSize: 13 }}><b>Tipo:</b> {alert.category}</div>
+                        <div style={{ marginTop: 4, fontSize: 13 }}><b>Reportes coincidentes:</b> {alert.reportCount}</div>
+                        <div style={{ marginTop: 4, fontSize: 13 }}><b>Radio aproximado:</b> {Math.round(alert.radiusKm * 1000)} m</div>
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>{alert.summary}</div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                </div>
+              );
+            })}
 
             {/* ALERTAS */}
 

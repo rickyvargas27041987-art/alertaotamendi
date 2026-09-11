@@ -226,7 +226,11 @@ const [aiError, setAiError] = useState<string | null>(null);
           ultimaAlertaIdRef.current !== null &&
           masReciente.id !== ultimaAlertaIdRef.current
         ) {
-          setAlertaNueva(masReciente);
+          // Persona/Vehículo sospechoso no generan aviso individual en monitoreo.
+          // El aviso especial aparece recién cuando se forma una alerta preventiva de 3+.
+          if (!esNormal(masReciente.category)) {
+            setAlertaNueva(masReciente);
+          }
 
           if (esCritica(masReciente.category)) {
             setAlertasCriticasPendientes((prev) =>

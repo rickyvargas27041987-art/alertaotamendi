@@ -412,6 +412,137 @@ async function notifyNearbyReport(
 }
 
 /* =========================================================
+   ALERTA PREVENTIVA AGRUPADA
+   Persona/Vehículo sospechoso: 3 reportes distintos
+========================================================= */
+
+const PREVENTIVE_WINDOW_MINUTES = 30;
+const PREVENTIVE_MAX_RADIUS_KM = 1;
+
+function normalizeWords(text: string) {
+  const stop = new Set(["para","pero","como","con","sin","una","uno","unos","unas","que","del","las","los","por","muy","esta","este","ese","esa","sobre","persona","sospechosa","vehiculo","vehículo"]);
+  return new Set(
+    text.toLocaleLowerCase("es-AR").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9ñ ]/g, " ").split(/\s+/)
+      .filter((word) => word.length >= 4 && !stop.has(word))
+  );
+}
+
+function sharedDetailCount(a: string, b: string) {
+  const aw = normalizeWords(a);
+  const bw = normalizeWords(b);
+  let count = 0;
+  aw.forEach((word) => { if (bw.has(word)) count += 1; });
+  return count;
+}
+
+async function sendPreventivePush(alert: {
+  id: number; category: string; centerLatitude: number | null; centerLongitude: number | null;
+}) {
+  if (alert.centerLatitude === null || alert.centerLongitude === null) return;
+  const subscriptions = await prisma.pushSubscription.findMany({ where: { enabled: true } });
+  const nearby = subscriptions.filter((subscription) =>
+    calcularDistanciaKm(subscription.latitude, subscription.longitude, alert.centerLatitude!, alert.centerLongitude!) <= PUSH_RADIUS_KM
+  );
+
+  await Promise.all(nearby.map(async (subscription) => {
+    try {
+      const result = await sendWebPush(
+        { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth },
+        {
+          title: "⚠️ AVISO PREVENTIVO EN LA ZONA",
+          body: "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia.",
+          url: "/mapa",
+          tag: `preventive-${alert.id}`,
+          priority: "normal",
+        }
+      );
+      if (result.status === 404 || result.status === 410) {
+        await prisma.pushSubscription.update({ where: { id: subscription.id }, data: { enabled: false } });
+      }
+    } catch (error) {
+      console.error(`[PUSH] Error en alerta preventiva #${alert.id}:`, error);
+    }
+  }));
+}
+
+async function evaluateSuspiciousPattern(report: {
+  id: number; category: string; description: string; latitude: number | null; longitude: number | null; createdAt: Date;
+}) {
+  if (report.latitude === null || report.longitude === null) return;
+  const since = new Date(report.createdAt.getTime() - PREVENTIVE_WINDOW_MINUTES * 60 * 1000);
+  const candidates = await prisma.report.findMany({
+    where: {
+      id: { not: report.id }, category: report.category,
+      createdAt: { gte: since, lte: report.createdAt },
+      latitude: { not: null }, longitude: { not: null },
+    },
+    orderBy: { createdAt: "desc" }, take: 40,
+  });
+
+  const related = candidates.filter((candidate) => {
+    const distance = calcularDistanciaKm(report.latitude!, report.longitude!, candidate.latitude!, candidate.longitude!);
+    if (!Number.isFinite(distance) || distance > PREVENTIVE_MAX_RADIUS_KM) return false;
+    // Muy cerca: la zona por sí sola alcanza. Más lejos: exigimos detalles compartidos.
+    return distance <= 0.35 || sharedDetailCount(report.description, candidate.description) >= 2;
+  });
+
+  const group = [report, ...related].slice(0, 12);
+  if (group.length < 3) return;
+
+  const reportIds = Array.from(new Set(group.map((item) => item.id)));
+  const latitudes = group.map((item) => item.latitude!).filter(Number.isFinite);
+  const longitudes = group.map((item) => item.longitude!).filter(Number.isFinite);
+  const centerLatitude = latitudes.reduce((a,b) => a+b, 0) / latitudes.length;
+  const centerLongitude = longitudes.reduce((a,b) => a+b, 0) / longitudes.length;
+  const farthestKm = Math.max(...group.map((item) => calcularDistanciaKm(centerLatitude, centerLongitude, item.latitude!, item.longitude!)));
+  const radiusKm = Math.max(0.15, Math.min(1.5, farthestKm + 0.12));
+
+  const recentAlerts = await prisma.personPatternAlert.findMany({
+    where: { category: report.category, status: { in: ["pendiente", "en_revision"] }, lastReportAt: { gte: since } },
+    orderBy: { updatedAt: "desc" }, take: 20,
+  });
+  const existing = recentAlerts.find((alert) =>
+    alert.reportIds.some((id) => reportIds.includes(id)) ||
+    (alert.centerLatitude !== null && alert.centerLongitude !== null &&
+      calcularDistanciaKm(centerLatitude, centerLongitude, alert.centerLatitude, alert.centerLongitude) <= PREVENTIVE_MAX_RADIUS_KM)
+  );
+
+  let preventiveAlert;
+  let isNew = false;
+  if (existing) {
+    const merged = Array.from(new Set([...existing.reportIds, ...reportIds]));
+    preventiveAlert = await prisma.personPatternAlert.update({
+      where: { id: existing.id },
+      data: {
+        triggerReportId: report.id, reportIds: merged, reportCount: merged.length,
+        centerLatitude, centerLongitude, radiusKm, timeWindowMinutes: PREVENTIVE_WINDOW_MINUTES,
+        summary: `Se detectaron ${merged.length} reportes coincidentes de ${report.category} en el sector.`,
+        reason: "Coincidencia por proximidad geográfica y/o detalles compartidos entre reportes.",
+        lastReportAt: report.createdAt,
+      },
+    });
+  } else {
+    isNew = true;
+    preventiveAlert = await prisma.personPatternAlert.create({
+      data: {
+        category: report.category, triggerReportId: report.id, reportIds, reportCount: reportIds.length,
+        centerLatitude, centerLongitude, radiusKm, timeWindowMinutes: PREVENTIVE_WINDOW_MINUTES,
+        summary: `Se detectaron ${reportIds.length} reportes coincidentes de ${report.category} en el sector.`,
+        reason: "Coincidencia por proximidad geográfica y/o detalles compartidos entre reportes.",
+        status: "pendiente", lastReportAt: report.createdAt,
+      },
+    });
+  }
+
+  // Un solo beep/push al nacer la alerta preventiva; los reportes posteriores se agrupan sin repetir aviso.
+  if (isNew && !preventiveAlert.notificationSentAt) {
+    await sendPreventivePush(preventiveAlert);
+    await prisma.personPatternAlert.update({ where: { id: preventiveAlert.id }, data: { notificationSentAt: new Date() } });
+  }
+}
+
+/* =========================================================
    GET
    ADMIN: información completa
    PÚBLICO: información protegida
@@ -689,9 +820,16 @@ export async function POST(
      * Vercel no finalice la función
      * antes de terminar los pushes.
      */
-    await notifyNearbyReport(
-      newReport
-    );
+    // Persona/Vehículo sospechoso NO generan push individual.
+    // Recién se avisa cuando 3 reportes distintos forman una alerta preventiva.
+    if (
+      newReport.category !== "Persona sospechosa" &&
+      newReport.category !== "Vehículo sospechoso"
+    ) {
+      await notifyNearbyReport(newReport);
+    } else {
+      await evaluateSuspiciousPattern(newReport);
+    }
 
     return NextResponse.json(
       {
