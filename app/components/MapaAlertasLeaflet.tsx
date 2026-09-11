@@ -221,7 +221,8 @@ function isCritical(category: string) {
 
 function getMarkerIcon(
   category: string,
-  isNew: boolean
+  isNew: boolean,
+  mode: "admin" | "public"
 ) {
   const item =
     MARKER_CONFIG[category] || {
@@ -230,80 +231,53 @@ function getMarkerIcon(
       label: "Alerta",
     };
 
-  const glow = isCritical(category)
-    ? `0 0 0 5px ${item.color}33,
-       0 0 22px ${item.color}66,
-       0 7px 20px rgba(0,0,0,.55)`
-    : "0 7px 20px rgba(0,0,0,.50)";
+  // En monitoreo, una sospecha aislada debe verse pero sin competir
+  // visualmente con una alerta preventiva ya confirmada (3+ reportes).
+  const isSuspicion =
+    category === "Persona sospechosa" ||
+    category === "Vehículo sospechoso";
+  const compact = mode === "admin" && isSuspicion;
+  const critical = isCritical(category);
+
+  const markerSize = compact ? 27 : critical ? 44 : 40;
+  const wrapperWidth = compact ? 38 : 56;
+  const wrapperHeight = compact ? 42 : 60;
+  const anchorX = Math.round(wrapperWidth / 2);
+  const anchorY = compact ? 35 : 51;
+  const borderWidth = compact ? 2 : 3;
+  const radius = compact ? "9px 9px 9px 2px" : "14px 14px 14px 3px";
+  const fontSize = compact ? 13 : critical ? 20 : 18;
+  const pulseSize = markerSize;
+  const pulseLeft = Math.round((wrapperWidth - pulseSize) / 2);
+  const pulseTop = compact ? 4 : 5;
+
+  // Alta prioridad: pulso permanente para que destaque incluso después
+  // de los primeros minutos. El resto conserva el pulso de "reporte nuevo".
+  const shouldPulse = critical || (!compact && isNew);
+
+  const glow = critical
+    ? `0 0 0 6px ${item.color}38,
+       0 0 28px ${item.color}88,
+       0 8px 22px rgba(0,0,0,.58)`
+    : compact
+      ? "0 4px 10px rgba(0,0,0,.38)"
+      : "0 7px 20px rgba(0,0,0,.50)";
 
   return L.divIcon({
     className: "alerta-marker-wrapper",
-
     html: `
-      <div
-        style="
-          position:relative;
-          width:52px;
-          height:56px;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-        "
-      >
-
-        ${
-          isNew
-            ? `
-          <div
-            style="
-              position:absolute;
-              top:5px;
-              left:6px;
-              width:40px;
-              height:40px;
-              border-radius:999px;
-              background:${item.color};
-              opacity:.40;
-              animation:alertaPulse 1.35s infinite;
-            "
-          ></div>
-        `
-            : ""
-        }
-
-        <div
-          style="
-            position:relative;
-            width:40px;
-            height:40px;
-            border-radius:14px 14px 14px 3px;
-            transform:rotate(-45deg);
-            background:${item.color};
-            border:3px solid white;
-            box-shadow:${glow};
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            z-index:2;
-          "
-        >
-          <span
-            style="
-              transform:rotate(45deg);
-              font-size:18px;
-              line-height:1;
-            "
-          >
-            ${item.emoji}
-          </span>
+      <div style="position:relative;width:${wrapperWidth}px;height:${wrapperHeight}px;display:flex;align-items:center;justify-content:center;">
+        ${shouldPulse ? `
+          <div style="position:absolute;top:${pulseTop}px;left:${pulseLeft}px;width:${pulseSize}px;height:${pulseSize}px;border-radius:999px;background:${item.color};opacity:.42;animation:alertaPulse ${critical ? "1.15s" : "1.35s"} infinite;"></div>
+        ` : ""}
+        <div style="position:relative;width:${markerSize}px;height:${markerSize}px;border-radius:${radius};transform:rotate(-45deg);background:${item.color};border:${borderWidth}px solid white;box-shadow:${glow};display:flex;align-items:center;justify-content:center;z-index:2;">
+          <span style="transform:rotate(45deg);font-size:${fontSize}px;line-height:1;">${item.emoji}</span>
         </div>
-
       </div>
     `,
-
-    iconSize: [52, 56],
-    iconAnchor: [26, 48],
-    popupAnchor: [0, -45],
+    iconSize: [wrapperWidth, wrapperHeight],
+    iconAnchor: [anchorX, anchorY],
+    popupAnchor: [0, -anchorY + 5],
   });
 }
 
@@ -1439,7 +1413,14 @@ export default function MapaAlertasLeaflet({
               if (alert.centerLatitude === null || alert.centerLongitude === null) return null;
               const isVehicle = alert.category === "Vehículo sospechoso";
               const color = isVehicle ? "#f59e0b" : "#fb923c";
-              const icon = L.divIcon({ className: "", html: `<div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${color};border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,.45);font-size:21px">⚠️</div>`, iconSize: [42,42], iconAnchor: [21,21], popupAnchor: [0,-22] });
+              const icon = L.divIcon({
+                className: "",
+                html: `<div style="position:relative;width:54px;height:54px;display:flex;align-items:center;justify-content:center">
+                  <div style="position:absolute;width:42px;height:42px;border-radius:50%;background:${color};opacity:.42;animation:alertaPulse 1.25s infinite"></div>
+                  <div style="position:relative;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${color};border:3px solid white;box-shadow:0 0 0 5px ${color}33,0 4px 18px rgba(0,0,0,.5);font-size:21px;z-index:2">⚠️</div>
+                </div>`,
+                iconSize: [54,54], iconAnchor: [27,27], popupAnchor: [0,-29]
+              });
               return (
                 <div key={`preventive-${alert.id}`}>
                   <Circle center={[alert.centerLatitude, alert.centerLongitude]} radius={Math.max(150, alert.radiusKm * 1000)} pathOptions={{ color, weight: 3, opacity: 0.8, fillColor: color, fillOpacity: 0.12, dashArray: "8 6" }} />
@@ -1508,7 +1489,8 @@ export default function MapaAlertasLeaflet({
                     ]}
                     icon={getMarkerIcon(
                       report.category,
-                      isNew
+                      isNew,
+                      mode
                     )}
                   >
 
