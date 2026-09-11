@@ -59,9 +59,9 @@ type MonitorZone = {
 };
 
 type PreventiveAlert = {
-  id: number; category: string; reportIds: number[]; reportCount: number;
+  id: number; category: string; reportIds?: number[]; reportCount: number;
   centerLatitude: number | null; centerLongitude: number | null; radiusKm: number;
-  summary: string; status: string; createdAt: string;
+  summary?: string; status?: string; createdAt: string; updatedAt?: string;
 };
 
 type Props = {
@@ -871,21 +871,24 @@ export default function MapaAlertasLeaflet({
     }
   }
 
-  // En monitoreo cargamos únicamente alertas preventivas ya generadas (3+).
+  // Cargamos solamente alertas preventivas ya generadas (3+).
+  // El monitoreo usa el endpoint privado; la app pública recibe solo datos seguros.
   useEffect(() => {
-    if (mode !== "admin") return;
     let cancelled = false;
     const load = async () => {
       try {
-        const response = await fetch("/api/person-pattern-alerts", { cache: "no-store" });
+        const endpoint = mode === "admin" ? "/api/person-pattern-alerts" : "/api/preventive-alerts";
+        const response = await fetch(endpoint, { cache: "no-store" });
         const data = await response.json();
         if (!cancelled && response.ok && data.success && Array.isArray(data.alerts)) {
           setPreventiveAlerts(data.alerts.filter((alert: PreventiveAlert) => alert.reportCount >= 3));
         }
-      } catch (error) { console.error("Error cargando perímetros preventivos:", error); }
+      } catch (error) {
+        console.error("Error cargando perímetros preventivos:", error);
+      }
     };
     void load();
-    const interval = window.setInterval(() => void load(), 3000);
+    const interval = window.setInterval(() => void load(), mode === "admin" ? 3000 : 12000);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [mode]);
 
@@ -916,6 +919,13 @@ export default function MapaAlertasLeaflet({
               "resuelto",
               "descartada",
             ].includes(status)
+          ) {
+            return false;
+          }
+
+          if (
+            mode === "public" &&
+            ["Persona sospechosa", "Vehículo sospechoso"].includes(report.category)
           ) {
             return false;
           }
@@ -1425,7 +1435,7 @@ export default function MapaAlertasLeaflet({
               )}
 
             {/* ALERTAS PREVENTIVAS AGRUPADAS: marcador + perímetro dinámico */}
-            {mode === "admin" && preventiveAlerts.map((alert) => {
+            {preventiveAlerts.map((alert) => {
               if (alert.centerLatitude === null || alert.centerLongitude === null) return null;
               const isVehicle = alert.category === "Vehículo sospechoso";
               const color = isVehicle ? "#f59e0b" : "#fb923c";
@@ -1440,7 +1450,11 @@ export default function MapaAlertasLeaflet({
                         <div style={{ marginTop: 8, fontSize: 13 }}><b>Tipo:</b> {alert.category}</div>
                         <div style={{ marginTop: 4, fontSize: 13 }}><b>Reportes coincidentes:</b> {alert.reportCount}</div>
                         <div style={{ marginTop: 4, fontSize: 13 }}><b>Radio aproximado:</b> {Math.round(alert.radiusKm * 1000)} m</div>
-                        <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>{alert.summary}</div>
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>
+                          {mode === "admin"
+                            ? alert.summary || "Varios reportes coincidentes generaron esta alerta preventiva."
+                            : "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia."}
+                        </div>
                       </div>
                     </Popup>
                   </Marker>
