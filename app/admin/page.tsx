@@ -661,7 +661,6 @@ const [aiError, setAiError] = useState<string | null>(null);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      {currentUser?.role === "ADMIN" && <a href="/admin/usuarios" className="fixed right-4 top-4 z-[9999] rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white shadow-xl">👥 Usuarios</a>}
       <PersonPatternAlerts
   onOpenReport={(reportId) => {
     const report = reports.find(
@@ -747,6 +746,14 @@ const [aiError, setAiError] = useState<string | null>(null);
             >
               ↻ Sincronizar
             </button>
+            {currentUser?.role === "ADMIN" && (
+              <a
+                href="/admin/usuarios"
+                className="rounded-2xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-semibold hover:bg-slate-700"
+              >
+                👥 Usuarios
+              </a>
+            )}
             <button
               onClick={handleLogout}
               className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold hover:bg-red-500"
