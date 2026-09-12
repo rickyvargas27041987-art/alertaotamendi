@@ -296,8 +296,14 @@ export async function POST(
        SEGURIDAD ADMIN
     ----------------------------------------------------- */
 
-    const actor = await getMonitorActor();
-    if (!actor) {
+    const internalSecret = request.headers.get("x-alerta-internal-secret");
+    const isInternalRequest = Boolean(
+      process.env.ADMIN_SESSION_SECRET &&
+      internalSecret === process.env.ADMIN_SESSION_SECRET
+    );
+
+    const actor = isInternalRequest ? null : await getMonitorActor();
+    if (!isInternalRequest && !actor) {
       return NextResponse.json(
         {
           success: false,
@@ -392,7 +398,7 @@ export async function POST(
       );
     }
 
-    if (!canOperateReport(actor, report)) {
+    if (!isInternalRequest && actor && !canOperateReport(actor, report)) {
       return NextResponse.json({ success: false, error: "No tenés autorización para analizar reportes fuera de tu jurisdicción." }, { status: 403 });
     }
 

@@ -813,6 +813,37 @@ export async function POST(
     );
 
     /*
+     * ANÁLISIS IA AUTOMÁTICO
+     * El reporte queda analizado antes de aparecer en el Centro de Monitoreo.
+     * Si OpenAI falla, la alerta igualmente se conserva y continúa el flujo normal.
+     */
+    try {
+      const internalSecret = process.env.ADMIN_SESSION_SECRET;
+      if (internalSecret && process.env.OPENAI_API_KEY) {
+        const origin = new URL(request.url).origin;
+        const aiResponse = await fetch(`${origin}/api/ai/analyze-report`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-alerta-internal-secret": internalSecret,
+          },
+          body: JSON.stringify({ reportId: newReport.id }),
+          cache: "no-store",
+        });
+
+        if (!aiResponse.ok) {
+          console.error(`[AI AUTO] No se pudo analizar reporte #${newReport.id}:`, await aiResponse.text());
+        } else {
+          console.log(`[AI AUTO] Reporte #${newReport.id} analizado automáticamente.`);
+        }
+      } else {
+        console.warn("[AI AUTO] Falta OPENAI_API_KEY o ADMIN_SESSION_SECRET.");
+      }
+    } catch (error) {
+      console.error(`[AI AUTO] Error automático en reporte #${newReport.id}:`, error);
+    }
+
+    /*
      * Notificamos dispositivos dentro
      * del radio de 10 km.
      *

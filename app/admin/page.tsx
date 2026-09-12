@@ -28,6 +28,9 @@ type Report = {
   aiPossibleSpam?: boolean | null;
   aiReason?: string | null;
   aiAnalyzedAt?: string | null;
+  province?: string | null;
+  district?: string | null;
+  locality?: string | null;
 };
 
 type AiAnalysisResult = {
@@ -107,6 +110,15 @@ function esAlta(category: string) {
 
 function esNormal(category: string) {
   return category === "Vehículo sospechoso" || category === "Persona sospechosa";
+}
+
+function reportPriority(report: Report): "critical" | "high" | "medium" | "low" {
+  if (report.aiPriority === "critical" || report.aiPriority === "high" || report.aiPriority === "medium" || report.aiPriority === "low") {
+    return report.aiPriority;
+  }
+  if (esCritica(report.category)) return "critical";
+  if (esAlta(report.category)) return "high";
+  return "low";
 }
 
 function esActiva(status: string) {
@@ -201,6 +213,9 @@ const [aiError, setAiError] = useState<string | null>(null);
     name: string;
     zones?: Array<{ province: string; district: string; locality: string | null }>;
   } | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<{ address: string; area: string; displayName?: string | null } | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
+
   const [mapFocusTarget, setMapFocusTarget] = useState<{
     latitude: number;
     longitude: number;
@@ -226,13 +241,13 @@ const [aiError, setAiError] = useState<string | null>(null);
           ultimaAlertaIdRef.current !== null &&
           masReciente.id !== ultimaAlertaIdRef.current
         ) {
-          // Persona/Vehículo sospechoso no generan aviso individual en monitoreo.
-          // El aviso especial aparece recién cuando se forma una alerta preventiva de 3+.
-          if (!esNormal(masReciente.category)) {
+          // La IA decide la intensidad operativa. Reportes de prioridad media o superior
+          // generan aviso en el Centro; los de prioridad baja quedan visibles sin alarma.
+          if (reportPriority(masReciente) !== "low") {
             setAlertaNueva(masReciente);
           }
 
-          if (esCritica(masReciente.category)) {
+          if (reportPriority(masReciente) === "critical") {
             setAlertasCriticasPendientes((prev) =>
               prev.includes(masReciente.id) ? prev : [...prev, masReciente.id]
             );
@@ -428,13 +443,13 @@ const [aiError, setAiError] = useState<string | null>(null);
       oscillator.stop(audioContext.currentTime + start + duration);
     };
 
-    if (esCritica(alertaNueva.category)) {
-      sonar(880, 0, 0.25);
-      sonar(880, 0.35, 0.25);
-      sonar(1100, 0.7, 0.4);
-    } else if (esAlta(alertaNueva.category)) {
-      sonar(760, 0, 0.25);
-      sonar(920, 0.3, 0.3);
+    const priority = reportPriority(alertaNueva);
+    if (priority === "critical") {
+      sonar(900, 0, 0.28); sonar(900, 0.34, 0.28); sonar(1150, 0.68, 0.42); sonar(1150, 1.18, 0.42);
+    } else if (priority === "high") {
+      sonar(780, 0, 0.25); sonar(980, 0.32, 0.32); sonar(980, 0.72, 0.32);
+    } else if (priority === "medium") {
+      sonar(650, 0, 0.22);
     }
 
     return () => {
@@ -455,9 +470,35 @@ const [aiError, setAiError] = useState<string | null>(null);
  function openReport(report: Report) {
   marcarCriticaComoRevisada(report);
   setSelectedReport(report);
-  setAiResult(null);
   setRelatedSearch(null);
   setAiError(null);
+  setSelectedAddress(null);
+
+  // El análisis automático ya viene guardado con el reporte.
+  if (report.aiAnalyzed && report.aiCategory && report.aiPriority && report.aiSummary && report.aiConfidence !== null && report.aiConfidence !== undefined) {
+    setAiResult({
+      category: report.aiCategory,
+      priority: report.aiPriority as AiAnalysisResult["priority"],
+      summary: report.aiSummary,
+      confidence: report.aiConfidence,
+      possibleSpam: Boolean(report.aiPossibleSpam),
+      reason: report.aiReason ?? "Análisis automático completado.",
+      relatedReports: false,
+      relatedReportIds: [],
+      relationSummary: "Las relaciones se actualizan al volver a analizar manualmente.",
+    });
+  } else {
+    setAiResult(null);
+  }
+
+  if (report.latitude !== null && report.longitude !== null) {
+    setAddressLoading(true);
+    fetch(`/api/reverse-geocode?lat=${encodeURIComponent(report.latitude)}&lon=${encodeURIComponent(report.longitude)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => { if (data.success) setSelectedAddress(data); })
+      .catch(() => {})
+      .finally(() => setAddressLoading(false));
+  }
 }
   async function analyzeReportWithAi(reportId: number) {
   try {
@@ -608,12 +649,15 @@ const [aiError, setAiError] = useState<string | null>(null);
     });
   }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes]);
 
+  const alertPriority = alertaNueva ? reportPriority(alertaNueva) : "low";
   const alertVisual =
-    alertaNueva && esCritica(alertaNueva.category)
-      ? { box: "border-red-500 bg-red-950", badge: "bg-red-600", label: "PRIORIDAD CRÍTICA" }
-      : alertaNueva && esAlta(alertaNueva.category)
-      ? { box: "border-orange-500 bg-orange-950", badge: "bg-orange-500", label: "PRIORIDAD ALTA" }
-      : { box: "border-yellow-500 bg-yellow-950", badge: "bg-yellow-500 text-black", label: "PRIORIDAD NORMAL" };
+    alertPriority === "critical"
+      ? { box: "border-red-400 bg-red-950 ring-4 ring-red-500/30 animate-pulse", badge: "bg-red-600", label: "🔴 PRIORIDAD CRÍTICA" }
+      : alertPriority === "high"
+      ? { box: "border-orange-400 bg-orange-950 ring-2 ring-orange-500/30", badge: "bg-orange-500", label: "🟠 PRIORIDAD ALTA" }
+      : alertPriority === "medium"
+      ? { box: "border-yellow-500 bg-yellow-950", badge: "bg-yellow-500 text-black", label: "🟡 PRIORIDAD MEDIA" }
+      : { box: "border-emerald-600 bg-emerald-950", badge: "bg-emerald-600", label: "🟢 PRIORIDAD BAJA" };
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -1066,6 +1110,16 @@ const [aiError, setAiError] = useState<string | null>(null);
                         <span className={`rounded-lg border px-2 py-1 text-xs font-semibold ${statusClass(report.status)}`}>
                           {statusLabel(report.status)}
                         </span>
+                        {report.aiAnalyzed && (
+                          <span className={`rounded-lg px-2 py-1 text-[10px] font-black ${
+                            reportPriority(report) === "critical" ? "bg-red-600 text-white animate-pulse" :
+                            reportPriority(report) === "high" ? "bg-orange-500 text-white" :
+                            reportPriority(report) === "medium" ? "bg-yellow-500 text-black" :
+                            "bg-emerald-700 text-white"
+                          }`}>
+                            IA {reportPriority(report) === "critical" ? "CRÍTICA" : reportPriority(report) === "high" ? "ALTA" : reportPriority(report) === "medium" ? "MEDIA" : "BAJA"}
+                          </span>
+                        )}
                         {alertasCriticasPendientes.includes(report.id) && (
                           <span className="rounded-full bg-red-600 px-2 py-1 text-[10px] font-black animate-pulse">SIN REVISAR</span>
                         )}
@@ -1205,12 +1259,21 @@ const [aiError, setAiError] = useState<string | null>(null);
                 )}
 
                 {selectedReport.latitude !== null && selectedReport.longitude !== null && (
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Ubicación registrada</p>
-                    <p className="mt-2 font-mono text-sm text-slate-300">
-                      {selectedReport.latitude.toFixed(5)}, {selectedReport.longitude.toFixed(5)}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-500">La ubicación se visualiza en el mapa operativo principal.</p>
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/15 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">📍 Dirección del reporte</p>
+                    {addressLoading ? (
+                      <p className="mt-2 text-sm text-slate-400">Buscando calle y altura…</p>
+                    ) : selectedAddress ? (
+                      <>
+                        <p className="mt-2 text-lg font-bold text-white">{selectedAddress.address}</p>
+                        {selectedAddress.area && <p className="mt-1 text-sm text-slate-300">{selectedAddress.area}</p>}
+                      </>
+                    ) : (
+                      <>
+                        <p className="mt-2 font-semibold text-slate-200">{[selectedReport.locality, selectedReport.district, selectedReport.province].filter(Boolean).join(" · ") || "Dirección no disponible"}</p>
+                        <p className="mt-1 text-xs text-slate-500">La ubicación exacta sigue disponible en el mapa operativo.</p>
+                      </>
+                    )}
                   </div>
                 )}
 <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4">
@@ -1220,7 +1283,7 @@ const [aiError, setAiError] = useState<string | null>(null);
     </p>
 
     <p className="mt-1 text-xs text-slate-400">
-      Analiza prioridad, categoría, posible spam y alertas relacionadas.
+      Análisis automático de prioridad, categoría, posible spam y contexto del reporte.
     </p>
   </div>
 
@@ -1229,7 +1292,7 @@ const [aiError, setAiError] = useState<string | null>(null);
       onClick={() => void analyzeReportWithAi(selectedReport.id)}
       className="mt-4 w-full rounded-xl bg-cyan-600 px-4 py-3 font-bold text-white hover:bg-cyan-500"
     >
-      🤖 Analizar reporte con IA
+      🤖 Analizar ahora / reintentar
     </button>
   )}
 
