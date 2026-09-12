@@ -3,6 +3,43 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+declare global {
+  interface Window {
+    AlertaAndroid?: {
+      isNativeAndroid: () => boolean;
+      getFcmToken: () => string;
+      areNotificationsEnabled: () => boolean;
+    };
+  }
+}
+
+function hasNativeAndroidBridge() {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.AlertaAndroid?.isNativeAndroid === "function" &&
+      window.AlertaAndroid.isNativeAndroid()
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function getNativeFcmToken() {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      const token = window.AlertaAndroid?.getFcmToken?.()?.trim() || "";
+      if (token.length >= 40) return token;
+    } catch {
+      // El puente puede tardar unos instantes en quedar disponible.
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+  }
+
+  throw new Error("No se pudo obtener el token de notificaciones del teléfono.");
+}
+
 const categories = [
   { icon: "🚨", title: "Delito / Robo", helper: "Robo, intento de robo o delito en curso", color: "bg-red-500" },
   { icon: "👤", title: "Persona sospechosa", helper: "Conducta o presencia que te genera preocupación", color: "bg-orange-500" },
@@ -109,6 +146,7 @@ function saveNotifiedId(id: number) {
 }
 
 export default function Home() {
+  const [isAndroidApp, setIsAndroidApp] = useState(false);
   const [selected, setSelected] = useState("");
   const [description, setDescription] = useState("");
   const [sending, setSending] = useState(false);
@@ -196,33 +234,94 @@ export default function Home() {
     return true;
   }
 
+  async function refreshNativeFcmSubscription(lat: number, lon: number) {
+    if (!hasNativeAndroidBridge()) {
+      throw new Error("No se encontró el servicio nativo de notificaciones.");
+    }
+
+    const notificationsAllowed =
+      window.AlertaAndroid?.areNotificationsEnabled?.() ?? false;
+
+    if (!notificationsAllowed) {
+      throw new Error(
+        "Las notificaciones están desactivadas para Alerta Otamendi en Android."
+      );
+    }
+
+    const token = await getNativeFcmToken();
+
+    const response = await fetch("/api/fcm/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token,
+        latitude: lat,
+        longitude: lon,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(
+        data?.error || "No se pudo registrar el teléfono para recibir alertas."
+      );
+    }
+
+    return true;
+  }
+
   async function enableNotifications() {
     setNotificationBusy(true);
+
     try {
-      if (!navigator.geolocation) throw new Error("Este dispositivo no permite geolocalización.");
-      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-        throw new Error("Este navegador no admite notificaciones push.");
+      if (!navigator.geolocation) {
+        throw new Error("Este dispositivo no permite geolocalización.");
       }
 
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        throw new Error("Necesitamos permiso para enviarte alertas cercanas.");
+      const nativeAndroid = hasNativeAndroidBridge();
+
+      if (!nativeAndroid) {
+        if (
+          !("Notification" in window) ||
+          !("serviceWorker" in navigator) ||
+          !("PushManager" in window)
+        ) {
+          throw new Error("Este navegador no admite notificaciones push.");
+        }
+
+        const permission = await Notification.requestPermission();
+
+        if (permission !== "granted") {
+          throw new Error("Necesitamos permiso para enviarte alertas cercanas.");
+        }
       }
 
       setLocationMessage("📍 Obteniendo ubicación para alertas cercanas…");
+
       const position = await getPosition();
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
+
       setLatitude(lat);
       setLongitude(lon);
 
-      await refreshPushSubscription(lat, lon);
+      if (nativeAndroid) {
+        await refreshNativeFcmSubscription(lat, lon);
+      } else {
+        await refreshPushSubscription(lat, lon);
+      }
+
       localStorage.setItem("notificationsEnabled", "true");
       setNotificationsEnabled(true);
+      setIsAndroidApp(nativeAndroid);
       setLocationMessage("✅ Alertas cercanas activadas para tu ubicación.");
-      setMessage("🔔 Vas a recibir avisos importantes dentro de un radio de 10 km.");
+      setMessage("🔔 Vas a recibir avisos importantes dentro de un radio de 5 km.");
     } catch (error) {
-      const text = error instanceof Error ? error.message : "No se pudieron activar las alertas.";
+      const text =
+        error instanceof Error
+          ? error.message
+          : "No se pudieron activar las alertas.";
+
       setMessage(`❌ ${text}`);
     } finally {
       setNotificationBusy(false);
@@ -278,21 +377,51 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const nativeAndroid = hasNativeAndroidBridge();
+    setIsAndroidApp(nativeAndroid);
+
     const saved = localStorage.getItem("notificationsEnabled") === "true";
     setNotificationsEnabled(saved);
 
-    if (saved && "Notification" in window && Notification.permission === "granted") {
+    if (!saved) return;
+
+    if (nativeAndroid) {
       void getPosition()
         .then(async (position) => {
           const lat = position.coords.latitude;
           const lon = position.coords.longitude;
+
           setLatitude(lat);
           setLongitude(lon);
           setLocationMessage("✅ Alertas cercanas activas.");
+
+          await refreshNativeFcmSubscription(lat, lon);
+        })
+        .catch(() => {
+          setLocationMessage(
+            "⚠️ Abrí la ubicación para actualizar las alertas cercanas."
+          );
+        });
+
+      return;
+    }
+
+    if ("Notification" in window && Notification.permission === "granted") {
+      void getPosition()
+        .then(async (position) => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+
+          setLatitude(lat);
+          setLongitude(lon);
+          setLocationMessage("✅ Alertas cercanas activas.");
+
           await refreshPushSubscription(lat, lon);
         })
         .catch(() => {
-          setLocationMessage("⚠️ Abrí la ubicación para actualizar las alertas cercanas.");
+          setLocationMessage(
+            "⚠️ Abrí la ubicación para actualizar las alertas cercanas."
+          );
         });
     }
   }, []);
@@ -358,7 +487,7 @@ export default function Home() {
             report.longitude
           );
 
-          if (distance <= 10) {
+          if (distance <= 5) {
             const important = IMPORTANT_CATEGORIES.has(report.category);
             showToast(
               report.id,
@@ -1186,7 +1315,9 @@ export default function Home() {
             <div className="flex-1">
               <h3 className="font-black">Alertas cercanas</h3>
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                Avisos de situaciones reportadas dentro de 10 km. Las alertas importantes pueden llegar aunque no tengas la app abierta. En iPhone/iPad, agregá la web a la pantalla de inicio para usar notificaciones push.
+                {isAndroidApp
+                  ? "Avisos de situaciones reportadas dentro de 5 km. En Android, las alertas importantes pueden llegar mediante notificaciones nativas aunque no tengas la app abierta."
+                  : "Avisos de situaciones reportadas dentro de 5 km. Las alertas importantes pueden llegar aunque no tengas la app abierta. En iPhone/iPad, agregá la web a la pantalla de inicio para usar notificaciones push."}
               </p>
               <button
                 onClick={() => void toggleNotifications()}
