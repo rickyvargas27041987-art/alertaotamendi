@@ -746,6 +746,15 @@ const [aiError, setAiError] = useState<string | null>(null);
             >
               ↻ Sincronizar
             </button>
+            <a
+              href="/admin/mapa-grande"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-2xl border border-blue-500/40 bg-blue-950/40 px-4 py-3 text-sm font-semibold text-blue-100 hover:bg-blue-900/50"
+              title="Abrir el mapa operativo en otra ventana"
+            >
+              🖥️ Mapa grande
+            </a>
             {currentUser?.role === "ADMIN" && (
               <a
                 href="/admin/usuarios"

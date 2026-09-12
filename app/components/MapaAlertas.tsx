@@ -32,6 +32,7 @@ type Props = {
   heightClassName?: string;
   focusTarget?: MapFocusTarget | null;
   monitorZones?: MonitorZone[];
+  kioskMode?: boolean;
 };
 
 /*

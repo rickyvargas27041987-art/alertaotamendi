@@ -71,6 +71,7 @@ type Props = {
   heightClassName?: string;
   focusTarget?: MapFocusTarget | null;
   monitorZones?: MonitorZone[];
+  kioskMode?: boolean;
 };
 
 type UserPosition = {
@@ -606,6 +607,7 @@ export default function MapaAlertasLeaflet({
   heightClassName = "h-[460px] md:h-[560px]",
   focusTarget = null,
   monitorZones = [],
+  kioskMode = false,
 }: Props) {
   const [filtro, setFiltro] =
     useState("Todos");
@@ -1115,7 +1117,7 @@ export default function MapaAlertasLeaflet({
         }
       `}</style>
 
-      <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-3 shadow-2xl shadow-black/10">
+      <div className={kioskMode ? "h-full w-full bg-slate-950" : "rounded-3xl border border-slate-800 bg-slate-900/70 p-3 shadow-2xl shadow-black/10"}>
 
         {/* UBICACIÓN DEL USUARIO */}
 
@@ -1156,7 +1158,7 @@ export default function MapaAlertasLeaflet({
 
         {/* LOCALIDAD / PROVINCIA - SOLO CENTRO DE MONITOREO */}
 
-        {mode === "admin" && (
+        {mode === "admin" && !kioskMode && (
           <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
@@ -1239,6 +1241,7 @@ export default function MapaAlertasLeaflet({
 
         {/* FILTROS */}
 
+        {!kioskMode && (
         <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
 
           {FILTROS.map(
@@ -1291,11 +1294,12 @@ export default function MapaAlertasLeaflet({
           </div>
 
         </div>
+        )}
 
         {/* MAPA */}
 
         <div
-          className={`${heightClassName} w-full overflow-hidden rounded-2xl bg-slate-950`}
+          className={`${heightClassName} w-full overflow-hidden ${kioskMode ? "rounded-none" : "rounded-2xl"} bg-slate-950`}
         >
 
           <MapContainer
