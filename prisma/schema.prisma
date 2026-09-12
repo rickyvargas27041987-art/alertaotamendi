@@ -228,3 +228,15 @@ model AuditLog {
   @@index([reportId])
   @@index([createdAt])
 }
+
+model FcmDevice {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  latitude  Float
+  longitude Float
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled])
+}
