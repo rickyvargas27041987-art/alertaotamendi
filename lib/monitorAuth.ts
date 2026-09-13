@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { subscriptionHasAccess } from "@/lib/subscription";
 
 export type MonitorActor = {
   kind: "legacy_admin" | "user";
@@ -9,6 +10,13 @@ export type MonitorActor = {
   name: string;
   role: "ADMIN" | "OPERATOR";
   zones: Array<{ province: string; district: string; locality: string | null }>;
+  subscription?: {
+    plan: string;
+    status: string;
+    endsAt: Date | null;
+    autoRenew: boolean;
+    mpStatus: string | null;
+  };
 };
 
 const SESSION_COOKIE = "monitor_session";
@@ -49,7 +57,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
   const legacy = store.get("admin_session")?.value;
   const legacySecret = process.env.ADMIN_SESSION_SECRET;
   if (legacy && legacySecret && legacy === legacySecret) {
-    return { kind: "legacy_admin", id: null, username: "admin", name: "Administrador", role: "ADMIN", zones: [] };
+    return { kind: "legacy_admin", id: null, username: "admin", name: "Administrador", role: "ADMIN", zones: [], subscription: { plan: "COURTESY", status: "ACTIVE", endsAt: null, autoRenew: false, mpStatus: null } };
   }
 
   const token = store.get(SESSION_COOKIE)?.value;
@@ -59,6 +67,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
     include: { user: { include: { zones: true } } },
   });
   if (!session || session.expiresAt <= new Date() || !session.user.active) return null;
+  if (!subscriptionHasAccess(session.user)) return null;
   return {
     kind: "user",
     id: session.user.id,
@@ -66,6 +75,13 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
     name: session.user.name,
     role: session.user.role as "ADMIN" | "OPERATOR",
     zones: session.user.zones.map(z => ({ province: z.province, district: z.district, locality: z.locality })),
+    subscription: {
+      plan: session.user.subscriptionPlan,
+      status: session.user.subscriptionStatus,
+      endsAt: session.user.subscriptionEndsAt,
+      autoRenew: session.user.subscriptionAutoRenew,
+      mpStatus: session.user.mpStatus,
+    },
   };
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createUserSession, monitorSessionCookie, verifyPassword } from "@/lib/monitorAuth";
+import { subscriptionHasAccess } from "@/lib/subscription";
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +22,13 @@ export async function POST(request: Request) {
     const user = await prisma.monitoringUser.findUnique({ where: { username: cleanUsername } });
     if (!user || !user.active || !verifyPassword(cleanPassword, user.passwordHash)) {
       return NextResponse.json({ success: false, error: "Usuario o contraseña incorrectos." }, { status: 401 });
+    }
+    if (!subscriptionHasAccess(user)) {
+      return NextResponse.json({
+        success: false,
+        error: "Tu acceso al Centro de Monitoreo está vencido o pendiente de pago. Contactá al administrador para renovar la suscripción.",
+        code: "SUBSCRIPTION_REQUIRED",
+      }, { status: 403 });
     }
     const { token } = await createUserSession(user.id);
     await prisma.monitoringUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });

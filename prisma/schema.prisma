@@ -178,6 +178,22 @@ model MonitoringUser {
   role         String   @default("OPERATOR")
   active       Boolean  @default(true)
   lastLoginAt  DateTime?
+
+  // SUSCRIPCIÓN / ACCESO COMERCIAL AL CENTRO DE MONITOREO
+  billingEmail            String?
+  subscriptionPlan        String    @default("COURTESY")
+  subscriptionStatus      String    @default("ACTIVE")
+  subscriptionStartedAt   DateTime?
+  subscriptionEndsAt      DateTime?
+  subscriptionAutoRenew   Boolean   @default(false)
+
+  // Mercado Pago (nunca guardar el Access Token en la base)
+  mpPreapprovalId         String?   @unique
+  mpPlanId                String?
+  mpStatus                String?
+  mpLastPaymentAt         DateTime?
+  mpLastPaymentId         String?
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -187,6 +203,9 @@ model MonitoringUser {
 
   @@index([active])
   @@index([role])
+  @@index([subscriptionPlan])
+  @@index([subscriptionStatus])
+  @@index([subscriptionEndsAt])
 }
 
 model UserZone {

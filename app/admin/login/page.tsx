@@ -24,7 +24,7 @@ export default function AdminLoginPage() {
       const data = await response.json();
 
       if (!data.success) {
-        setError("Contraseña incorrecta o acceso no autorizado.");
+        setError(data.error || "Contraseña incorrecta o acceso no autorizado.");
         return;
       }
 
