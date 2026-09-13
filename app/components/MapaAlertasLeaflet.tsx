@@ -87,6 +87,7 @@ type AdminSelectedLocation = {
   label: string;
   localityId?: string;
   bounds?: [[number, number], [number, number]];
+  detailZoom?: boolean;
 } | null;
 
 /* =========================================================
@@ -453,6 +454,23 @@ function AdminViewport({
       }
 
       if (selectedLocation) {
+        // «Ver detalle» debe acercar la localidad que está seleccionada ahora,
+        // nunca una ubicación fija. Ignoramos temporalmente los límites para
+        // mostrar calles alrededor del centro de esa localidad.
+        if (selectedLocation.detailZoom) {
+          const detailBounds = L.latLng(
+            selectedLocation.latitude,
+            selectedLocation.longitude
+          ).toBounds(3000);
+          map.fitBounds(detailBounds, {
+            padding: [24, 24],
+            maxZoom: 17,
+            animate: true,
+            duration: 0.6,
+          });
+          return;
+        }
+
         if (selectedLocation.bounds) {
           map.fitBounds(selectedLocation.bounds, {
             padding: [34, 34],
@@ -1172,7 +1190,8 @@ export default function MapaAlertasLeaflet({
                   // respeta esa selección. Si no, vuelve a su zona asignada.
                   const targetJurisdiction = adminSelectedLocation ?? primaryJurisdiction;
                   if (!targetJurisdiction) return;
-                  setAdminSelectedLocation(targetJurisdiction);
+                  const jurisdictionView = { ...targetJurisdiction, detailZoom: false };
+                  setAdminSelectedLocation(jurisdictionView);
                   setAdminLocationKey((value) => value + 1);
 
                   if (targetJurisdiction.localityId) {
@@ -1180,7 +1199,7 @@ export default function MapaAlertasLeaflet({
                       .then((response) => response.ok ? response.json() : null)
                       .then((data) => {
                         if (!data?.success || !Array.isArray(data.bounds)) return;
-                        setAdminSelectedLocation({ ...targetJurisdiction, bounds: data.bounds });
+                        setAdminSelectedLocation({ ...targetJurisdiction, bounds: data.bounds, detailZoom: false });
                         setAdminLocationKey((value) => value + 1);
                       })
                       .catch((error) => console.warn("No se pudieron cargar límites de jurisdicción:", error));
@@ -1191,6 +1210,24 @@ export default function MapaAlertasLeaflet({
               >
                 🎯 Mi jurisdicción
               </button>
+              {adminSelectedLocation && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Acerca SIEMPRE la provincia/localidad seleccionada actualmente.
+                    // No usa Otamendi ni la jurisdicción por defecto como referencia.
+                    setAdminSelectedLocation({
+                      ...adminSelectedLocation,
+                      detailZoom: true,
+                    });
+                    setAdminLocationKey((value) => value + 1);
+                  }}
+                  className="rounded-xl border border-blue-500/60 bg-blue-950/40 px-3 py-2 text-[11px] font-black text-blue-200 hover:bg-blue-900/60"
+                  title={`Acercar mapa a ${adminSelectedLocation.label}`}
+                >
+                  🔎 Ver detalle
+                </button>
+              )}
               {adminSelectedLocation && (
                 <button
                   type="button"
