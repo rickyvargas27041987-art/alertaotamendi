@@ -109,6 +109,11 @@ function getPushPriority(
    TÍTULO PUSH
 ========================================================= */
 
+function displayCategory(category: string) {
+  return category === "Delito / Robo" ? "Hurto / Robo" : category;
+}
+
+
 function getPushTitle(
   category: string,
   priority:
@@ -275,7 +280,7 @@ async function notifyNearbyReport(
                     title,
 
                     body:
-                      `${report.category} reportado a aproximadamente ${distance.toFixed(
+                      `${displayCategory(report.category)} reportado a aproximadamente ${distance.toFixed(
                         1
                       )} km de tu ubicación.`,
 

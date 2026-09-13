@@ -72,6 +72,8 @@ type Props = {
   focusTarget?: MapFocusTarget | null;
   monitorZones?: MonitorZone[];
   kioskMode?: boolean;
+  onOpenHistory?: () => void;
+  hotZoneMode?: boolean;
 };
 
 type UserPosition = {
@@ -88,6 +90,7 @@ type AdminSelectedLocation = {
   localityId?: string;
   bounds?: [[number, number], [number, number]];
   detailZoom?: boolean;
+  detailLevel?: 0 | 1 | 2;
 } | null;
 
 /* =========================================================
@@ -137,7 +140,7 @@ const MARKER_CONFIG: Record<
   "Delito / Robo": {
     color: "#ef4444",
     emoji: "🚨",
-    label: "Delito / Robo",
+    label: "Hurto / Robo",
   },
 
   "Persona sospechosa": {
@@ -171,6 +174,10 @@ const MARKER_CONFIG: Record<
   },
 };
 
+function displayCategory(category: string) {
+  return category === "Delito / Robo" ? "Hurto / Robo" : category;
+}
+
 const FILTROS = [
   {
     label: "Todos",
@@ -178,7 +185,7 @@ const FILTROS = [
   },
 
   {
-    label: "🚨 Robo",
+    label: "🚨 Hurto / Robo",
     value: "Delito / Robo",
   },
 
@@ -454,17 +461,18 @@ function AdminViewport({
       }
 
       if (selectedLocation) {
-        // «Ver detalle» debe acercar la localidad que está seleccionada ahora,
-        // nunca una ubicación fija. Ignoramos temporalmente los límites para
-        // mostrar calles alrededor del centro de esa localidad.
-        if (selectedLocation.detailZoom) {
+        // «Ver detalle» funciona en 3 pasos sobre la localidad seleccionada:
+        // 0 = vista normal, 1 = calles, 2 = detalle cercano.
+        const detailLevel = selectedLocation.detailLevel ?? (selectedLocation.detailZoom ? 1 : 0);
+        if (detailLevel > 0) {
+          const detailDiameterMeters = detailLevel === 2 ? 1400 : 3200;
           const detailBounds = L.latLng(
             selectedLocation.latitude,
             selectedLocation.longitude
-          ).toBounds(3000);
+          ).toBounds(detailDiameterMeters);
           map.fitBounds(detailBounds, {
             padding: [24, 24],
-            maxZoom: 17,
+            maxZoom: detailLevel === 2 ? 18 : 17,
             animate: true,
             duration: 0.6,
           });
@@ -626,6 +634,8 @@ export default function MapaAlertasLeaflet({
   focusTarget = null,
   monitorZones = [],
   kioskMode = false,
+  onOpenHistory,
+  hotZoneMode = false,
 }: Props) {
   const [filtro, setFiltro] =
     useState("Todos");
@@ -940,6 +950,26 @@ export default function MapaAlertasLeaflet({
       mode,
     ]);
 
+  const hotZones = useMemo(() => {
+    if (!hotZoneMode) return [] as Array<{ key: string; latitude: number; longitude: number; count: number }>;
+    const groups = new Map<string, { latitude: number; longitude: number; count: number }>();
+    for (const report of filteredReports) {
+      if (report.latitude === null || report.longitude === null) continue;
+      // Cuadrícula aproximada de 1 km. Suficiente para detectar concentración operativa sin afirmar un punto exacto.
+      const latBucket = Math.round(report.latitude * 100) / 100;
+      const lonBucket = Math.round(report.longitude * 100) / 100;
+      const key = `${latBucket.toFixed(2)}:${lonBucket.toFixed(2)}`;
+      const current = groups.get(key);
+      if (current) current.count += 1;
+      else groups.set(key, { latitude: latBucket, longitude: lonBucket, count: 1 });
+    }
+    return [...groups.entries()]
+      .map(([key, value]) => ({ key, ...value }))
+      .filter((item) => item.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 30);
+  }, [filteredReports, hotZoneMode]);
+
   /* =======================================================
      SOLICITAR UBICACIÓN
   ======================================================= */
@@ -1190,7 +1220,7 @@ export default function MapaAlertasLeaflet({
                   // respeta esa selección. Si no, vuelve a su zona asignada.
                   const targetJurisdiction = adminSelectedLocation ?? primaryJurisdiction;
                   if (!targetJurisdiction) return;
-                  const jurisdictionView = { ...targetJurisdiction, detailZoom: false };
+                  const jurisdictionView = { ...targetJurisdiction, detailZoom: false, detailLevel: 0 as const };
                   setAdminSelectedLocation(jurisdictionView);
                   setAdminLocationKey((value) => value + 1);
 
@@ -1199,7 +1229,7 @@ export default function MapaAlertasLeaflet({
                       .then((response) => response.ok ? response.json() : null)
                       .then((data) => {
                         if (!data?.success || !Array.isArray(data.bounds)) return;
-                        setAdminSelectedLocation({ ...targetJurisdiction, bounds: data.bounds, detailZoom: false });
+                        setAdminSelectedLocation({ ...targetJurisdiction, bounds: data.bounds, detailZoom: false, detailLevel: 0 });
                         setAdminLocationKey((value) => value + 1);
                       })
                       .catch((error) => console.warn("No se pudieron cargar límites de jurisdicción:", error));
@@ -1214,33 +1244,30 @@ export default function MapaAlertasLeaflet({
                 <button
                   type="button"
                   onClick={() => {
-                    // Acerca SIEMPRE la provincia/localidad seleccionada actualmente.
-                    // No usa Otamendi ni la jurisdicción por defecto como referencia.
+                    // Ciclo: vista normal -> calles -> detalle cercano -> vista normal.
+                    const currentLevel = adminSelectedLocation.detailLevel ?? (adminSelectedLocation.detailZoom ? 1 : 0);
+                    const nextLevel = ((currentLevel + 1) % 3) as 0 | 1 | 2;
                     setAdminSelectedLocation({
                       ...adminSelectedLocation,
-                      detailZoom: true,
+                      detailZoom: nextLevel > 0,
+                      detailLevel: nextLevel,
                     });
                     setAdminLocationKey((value) => value + 1);
                   }}
                   className="rounded-xl border border-blue-500/60 bg-blue-950/40 px-3 py-2 text-[11px] font-black text-blue-200 hover:bg-blue-900/60"
-                  title={`Acercar mapa a ${adminSelectedLocation.label}`}
+                  title={`Cambiar nivel de detalle de ${adminSelectedLocation.label}`}
                 >
                   🔎 Ver detalle
                 </button>
               )}
-              {adminSelectedLocation && (
+              {onOpenHistory && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setAdminSelectedLocation(null);
-                    setProvinciaId("");
-                    setLocalidadId("");
-                    setLocalidades([]);
-                    setResetKey((value) => value + 1);
-                  }}
-                  className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800"
+                  onClick={onOpenHistory}
+                  className="rounded-xl border border-violet-500/50 bg-violet-950/30 px-3 py-2 text-[11px] font-black text-violet-200 hover:bg-violet-900/50"
+                  title="Abrir historial, estadísticas y zonas calientes"
                 >
-                  Ver alertas
+                  📋 Historial
                 </button>
               )}
             </div>
@@ -1452,6 +1479,32 @@ export default function MapaAlertasLeaflet({
                 </>
               )}
 
+            {hotZoneMode && hotZones.map((zone) => {
+              const radius = Math.min(850, 220 + zone.count * 70);
+              const fillOpacity = Math.min(0.42, 0.10 + zone.count * 0.035);
+              return (
+                <Circle
+                  key={`hot-${zone.key}`}
+                  center={[zone.latitude, zone.longitude]}
+                  radius={radius}
+                  pathOptions={{
+                    color: zone.count >= 8 ? "#ef4444" : zone.count >= 5 ? "#f97316" : "#eab308",
+                    weight: 2,
+                    opacity: 0.8,
+                    fillColor: zone.count >= 8 ? "#ef4444" : zone.count >= 5 ? "#f97316" : "#eab308",
+                    fillOpacity,
+                  }}
+                >
+                  <Popup>
+                    <strong>🔥 Zona caliente aproximada</strong>
+                    <div style={{ marginTop: 6, fontSize: 12 }}>
+                      {zone.count} reportes concentrados en este sector.
+                    </div>
+                  </Popup>
+                </Circle>
+              );
+            })}
+
             {/* ALERTAS PREVENTIVAS AGRUPADAS: marcador + perímetro dinámico */}
             {preventiveAlerts.map((alert) => {
               if (alert.centerLatitude === null || alert.centerLongitude === null) return null;
@@ -1595,9 +1648,7 @@ export default function MapaAlertasLeaflet({
                           <div>
 
                             <strong>
-                              {
-                                report.category
-                              }
+                              {displayCategory(report.category)}
                             </strong>
 
                             <div

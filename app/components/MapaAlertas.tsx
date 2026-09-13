@@ -33,6 +33,8 @@ type Props = {
   focusTarget?: MapFocusTarget | null;
   monitorZones?: MonitorZone[];
   kioskMode?: boolean;
+  onOpenHistory?: () => void;
+  hotZoneMode?: boolean;
 };
 
 /*

@@ -100,6 +100,12 @@ const CATEGORIES = [
   "Persona sospechosa",
 ];
 
+function displayCategory(category: string) {
+  // Conservamos el valor interno histórico para no romper base de datos, APIs ni filtros.
+  // En pantalla usamos una denominación jurídicamente más prudente.
+  return category === "Delito / Robo" ? "Hurto / Robo" : category;
+}
+
 function esCritica(category: string) {
   return category === "Emergencia" || category === "Delito / Robo";
 }
@@ -215,6 +221,14 @@ const [aiError, setAiError] = useState<string | null>(null);
   } | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<{ address: string; area: string; displayName?: string | null } | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<"historial" | "estadisticas" | "zonas">("historial");
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("todos");
+  const [historyCategory, setHistoryCategory] = useState("todas");
+  const [historyPriority, setHistoryPriority] = useState("todas");
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
 
   const [mapFocusTarget, setMapFocusTarget] = useState<{
     latitude: number;
@@ -654,6 +668,77 @@ const [aiError, setAiError] = useState<string | null>(null);
     });
   }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes]);
 
+  const historyReports = useMemo(() => {
+    const term = historySearch.trim().toLowerCase();
+    const fromMs = historyFrom ? new Date(`${historyFrom}T00:00:00`).getTime() : null;
+    const toMs = historyTo ? new Date(`${historyTo}T23:59:59`).getTime() : null;
+
+    return reports.filter((report) => {
+      if (historyStatus !== "todos" && report.status !== historyStatus) return false;
+      if (historyCategory !== "todas" && report.category !== historyCategory) return false;
+      if (historyPriority !== "todas" && reportPriority(report) !== historyPriority) return false;
+      const created = new Date(report.createdAt).getTime();
+      if (fromMs !== null && created < fromMs) return false;
+      if (toMs !== null && created > toMs) return false;
+      if (!term) return true;
+      const number = term.replace(/^#/, "");
+      if (/^\d+$/.test(number)) return String(report.id) === number;
+      return [report.category, report.description, report.locality, report.district, report.province]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [reports, historySearch, historyStatus, historyCategory, historyPriority, historyFrom, historyTo]);
+
+  const historyStats = useMemo(() => {
+    const byCategory = new Map<string, number>();
+    const byStatus = new Map<string, number>();
+    const byPriority = new Map<string, number>();
+    const byHour = Array.from({ length: 24 }, () => 0);
+    const byLocality = new Map<string, number>();
+
+    for (const report of historyReports) {
+      byCategory.set(report.category, (byCategory.get(report.category) ?? 0) + 1);
+      byStatus.set(report.status, (byStatus.get(report.status) ?? 0) + 1);
+      const priority = reportPriority(report);
+      byPriority.set(priority, (byPriority.get(priority) ?? 0) + 1);
+      const hour = new Date(report.createdAt).getHours();
+      if (Number.isInteger(hour) && hour >= 0 && hour < 24) byHour[hour] += 1;
+      const locality = report.locality || report.district || report.province || "Sin localidad";
+      byLocality.set(locality, (byLocality.get(locality) ?? 0) + 1);
+    }
+
+    const busiestHour = byHour.reduce((best, count, hour) => count > best.count ? { hour, count } : best, { hour: 0, count: 0 });
+    return {
+      byCategory: [...byCategory.entries()].sort((a, b) => b[1] - a[1]),
+      byStatus: [...byStatus.entries()].sort((a, b) => b[1] - a[1]),
+      byPriority: [...byPriority.entries()].sort((a, b) => b[1] - a[1]),
+      byLocality: [...byLocality.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10),
+      busiestHour,
+    };
+  }, [historyReports]);
+
+  const hotZoneSummary = useMemo(() => {
+    const groups = new Map<string, { count: number; latitude: number; longitude: number; categories: Map<string, number>; locality: string }>();
+    for (const report of historyReports) {
+      if (report.latitude === null || report.longitude === null) continue;
+      const lat = Math.round(report.latitude * 100) / 100;
+      const lon = Math.round(report.longitude * 100) / 100;
+      const key = `${lat.toFixed(2)}:${lon.toFixed(2)}`;
+      const existing = groups.get(key) ?? { count: 0, latitude: lat, longitude: lon, categories: new Map<string, number>(), locality: report.locality || report.district || "Sector sin nombre" };
+      existing.count += 1;
+      existing.categories.set(report.category, (existing.categories.get(report.category) ?? 0) + 1);
+      groups.set(key, existing);
+    }
+    return [...groups.entries()]
+      .map(([key, group]) => ({
+        key, ...group,
+        mainCategory: [...group.categories.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Sin categoría",
+      }))
+      .filter((group) => group.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [historyReports]);
+
   const alertPriority = alertaNueva ? reportPriority(alertaNueva) : "low";
   const alertVisual =
     alertPriority === "critical"
@@ -694,7 +779,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                 {alertVisual.label}
               </span>
               <h2 className="mt-2 text-xl font-bold">
-                {categoryEmoji(alertaNueva.category)} {alertaNueva.category}
+                {categoryEmoji(alertaNueva.category)} {displayCategory(alertaNueva.category)}
               </h2>
               <p className="mt-1 line-clamp-2 text-sm text-white/75">
                 {alertaNueva.description}
@@ -787,7 +872,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                 </div>
                 <span className="text-2xl">🔴</span>
               </div>
-              <p className="mt-2 text-xs text-red-200/70">Emergencias y delito/robo activos</p>
+              <p className="mt-2 text-xs text-red-200/70">Emergencias y hurto/robo activos</p>
               {alertasCriticasPendientes.length > 0 && (
                 <button
                   onClick={() => {
@@ -859,6 +944,7 @@ const [aiError, setAiError] = useState<string | null>(null);
               heightClassName="h-[calc(100vh-285px)] min-h-[360px] max-h-[500px]"
               focusTarget={mapFocusTarget}
               monitorZones={currentUser?.zones ?? []}
+              onOpenHistory={() => { setHistoryOpen(true); setHistoryTab("historial"); }}
             />
           </div>
 
@@ -888,7 +974,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-[11px] font-bold leading-4 break-words">
-                          {categoryEmoji(report.category)} {report.category}
+                          {categoryEmoji(report.category)} {displayCategory(report.category)}
                         </p>
                         <p className="mt-1 text-[11px] text-slate-500">
                           #{report.id} · {relativeTime(report.createdAt)}
@@ -1145,7 +1231,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                           <span className="rounded-full bg-red-600 px-2 py-1 text-[10px] font-black animate-pulse">SIN REVISAR</span>
                         )}
                       </div>
-                      <h3 className="mt-2 text-lg font-bold">{categoryEmoji(report.category)} {report.category}</h3>
+                      <h3 className="mt-2 text-lg font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</h3>
                       <p className="mt-1 max-w-4xl text-sm text-slate-300">{report.description}</p>
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                         <span>{formatDate(report.createdAt)}</span>
@@ -1202,13 +1288,102 @@ const [aiError, setAiError] = useState<string | null>(null);
           )}
         </section>
 
+        {historyOpen && (
+          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-5">
+            <div className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-4 shadow-2xl sm:p-5">
+              <div className="flex flex-col gap-3 border-b border-slate-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400">Centro de análisis</p>
+                  <h2 className="mt-1 text-2xl font-black">📋 Historial · 📊 Estadísticas · 🔥 Zonas calientes</h2>
+                  <p className="mt-1 text-sm text-slate-400">Analiza los reportes visibles para tu usuario y jurisdicción.</p>
+                </div>
+                <button onClick={() => setHistoryOpen(false)} className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-bold hover:bg-slate-800">✕ Cerrar</button>
+              </div>
+
+              <div className="mt-4 grid gap-2 md:grid-cols-3 lg:grid-cols-6">
+                <input value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} placeholder="N° reporte, texto o localidad" className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-violet-500 lg:col-span-2" />
+                <select value={historyStatus} onChange={(e) => setHistoryStatus(e.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="todos">Todos los estados</option><option value="pendiente">Pendiente</option><option value="en_analisis">En análisis</option><option value="verificada">Verificada</option><option value="resuelta">Resuelta</option><option value="descartada">Descartada</option>
+                </select>
+                <select value={historyCategory} onChange={(e) => setHistoryCategory(e.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+                  {CATEGORIES.map((category) => <option key={category} value={category}>{category === "todas" ? "Todas las categorías" : displayCategory(category)}</option>)}
+                </select>
+                <select value={historyPriority} onChange={(e) => setHistoryPriority(e.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+                  <option value="todas">Todas las prioridades</option><option value="critical">Crítica</option><option value="high">Alta</option><option value="medium">Media</option><option value="low">Baja</option>
+                </select>
+                <button onClick={() => { setHistorySearch(""); setHistoryStatus("todos"); setHistoryCategory("todas"); setHistoryPriority("todas"); setHistoryFrom(""); setHistoryTo(""); }} className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-bold hover:bg-slate-800">Limpiar filtros</button>
+              </div>
+
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-slate-400">Desde<input type="date" value={historyFrom} onChange={(e) => setHistoryFrom(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+                <label className="text-xs text-slate-400">Hasta<input type="date" value={historyTo} onChange={(e) => setHistoryTo(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button onClick={() => setHistoryTab("historial")} className={`rounded-xl px-4 py-2 text-sm font-black ${historyTab === "historial" ? "bg-violet-600" : "border border-slate-700 bg-slate-950"}`}>📋 Historial ({historyReports.length})</button>
+                <button onClick={() => setHistoryTab("estadisticas")} className={`rounded-xl px-4 py-2 text-sm font-black ${historyTab === "estadisticas" ? "bg-violet-600" : "border border-slate-700 bg-slate-950"}`}>📊 Estadísticas</button>
+                <button onClick={() => setHistoryTab("zonas")} className={`rounded-xl px-4 py-2 text-sm font-black ${historyTab === "zonas" ? "bg-red-600" : "border border-slate-700 bg-slate-950"}`}>🔥 Zonas calientes</button>
+              </div>
+
+              {historyTab === "historial" && (
+                <div className="mt-4 max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+                  {historyReports.length === 0 && <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center text-slate-400">No hay reportes que coincidan con los filtros.</div>}
+                  {historyReports.map((report) => (
+                    <button key={report.id} onClick={() => { setHistoryOpen(false); openReport(report); }} className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left hover:border-violet-500/60 hover:bg-slate-900">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2"><span className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-black">#{report.id}</span><span className="font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</span><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(report.status)}`}>{statusLabel(report.status)}</span></div>
+                        <span className="text-xs text-slate-500">{formatDate(report.createdAt)}</span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-300">{report.description}</p>
+                      <p className="mt-1 text-xs text-slate-500">📍 {[report.locality, report.district, report.province].filter(Boolean).join(" · ") || "Ubicación sin nombre"}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {historyTab === "estadisticas" && (
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs text-slate-500">Reportes analizados</p><p className="mt-1 text-3xl font-black">{historyReports.length}</p></div>
+                    <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-4"><p className="text-xs text-red-300">Críticos</p><p className="mt-1 text-3xl font-black">{historyReports.filter(r => reportPriority(r) === "critical").length}</p></div>
+                    <div className="rounded-2xl border border-orange-500/30 bg-orange-950/20 p-4"><p className="text-xs text-orange-300">Alta prioridad</p><p className="mt-1 text-3xl font-black">{historyReports.filter(r => reportPriority(r) === "high").length}</p></div>
+                    <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4"><p className="text-xs text-cyan-300">Franja con más actividad</p><p className="mt-1 text-xl font-black">{historyStats.busiestHour.count > 0 ? `${String(historyStats.busiestHour.hour).padStart(2, "0")}:00–${String((historyStats.busiestHour.hour + 1) % 24).padStart(2, "0")}:00` : "—"}</p></div>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por categoría</h3><div className="mt-3 space-y-2">{historyStats.byCategory.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{displayCategory(name)}</span><b>{count}</b></div>)}</div></div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por localidad</h3><div className="mt-3 space-y-2">{historyStats.byLocality.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{name}</span><b>{count}</b></div>)}</div></div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por prioridad</h3><div className="mt-3 space-y-2">{historyStats.byPriority.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{name === "critical" ? "🔴 Crítica" : name === "high" ? "🟠 Alta" : name === "medium" ? "🟡 Media" : "🟢 Baja"}</span><b>{count}</b></div>)}</div></div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por estado</h3><div className="mt-3 space-y-2">{historyStats.byStatus.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{statusLabel(name)}</span><b>{count}</b></div>)}</div></div>
+                  </div>
+                </div>
+              )}
+
+              {historyTab === "zonas" && (
+                <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                  <div className="overflow-hidden rounded-2xl border border-slate-800">
+                    <MapaAlertas reports={historyReports} mode="admin" heightClassName="h-[430px]" monitorZones={currentUser?.zones ?? []} kioskMode hotZoneMode />
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <h3 className="font-black">🔥 Sectores con mayor concentración</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Agrupación aproximada por sectores de ~1 km. Es una ayuda operativa, no una conclusión policial.</p>
+                    <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto">
+                      {hotZoneSummary.length === 0 && <div className="rounded-xl bg-slate-900 p-4 text-sm text-slate-400">Aún no hay suficiente concentración para marcar zonas calientes con estos filtros.</div>}
+                      {hotZoneSummary.map((zone, index) => <div key={zone.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3"><div className="flex items-center justify-between"><b>#{index + 1} · {zone.locality}</b><span className="rounded-full bg-red-500/15 px-2 py-1 text-xs font-black text-red-300">{zone.count} reportes</span></div><p className="mt-1 text-xs text-slate-400">Predomina: {displayCategory(zone.mainCategory)}</p></div>)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {selectedReport && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-5">
             <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Reporte #{selectedReport.id}</p>
-                  <h2 className="mt-1 text-2xl font-black">{categoryEmoji(selectedReport.category)} {selectedReport.category}</h2>
+                  <h2 className="mt-1 text-2xl font-black">{categoryEmoji(selectedReport.category)} {displayCategory(selectedReport.category)}</h2>
                   <p className="mt-1 text-sm text-slate-400">{formatDate(selectedReport.createdAt)}</p>
                 </div>
                 <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(selectedReport.status)}`}>
@@ -1366,7 +1541,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           </p>
 
           <p className="mt-1 font-bold text-slate-200">
-            {aiResult.category}
+            {displayCategory(aiResult.category)}
           </p>
         </div>
 
@@ -1443,7 +1618,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                         </span>
 
                         {" · "}
-                        {candidate.category}
+                        {displayCategory(candidate.category)}
 
                         {" · "}
                         {candidate.distanceMeters} m

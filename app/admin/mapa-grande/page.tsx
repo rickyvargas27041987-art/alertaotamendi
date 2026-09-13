@@ -23,6 +23,10 @@ function priorityOf(report: Report): Priority {
   return "low";
 }
 
+function displayCategory(category: string) {
+  return category === "Delito / Robo" ? "Hurto / Robo" : category;
+}
+
 function priorityLabel(priority: Priority) {
   return priority === "critical" ? "CRÍTICA" : priority === "high" ? "ALTA" : priority === "medium" ? "MEDIA" : "BAJA";
 }
@@ -133,7 +137,7 @@ export default function MapaGrandePage() {
               {priorityLabel(alertCard.priority)}
             </span>
           </div>
-          <div className="mt-3 text-sm font-bold">{alertCard.report.category}</div>
+          <div className="mt-3 text-sm font-bold">{displayCategory(alertCard.report.category)}</div>
           <div className="mt-2 rounded-xl border border-slate-700/70 bg-black/20 p-3">
             <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">📍 Dirección</div>
             <div className="mt-1 text-sm font-semibold">{alertCard.address}</div>

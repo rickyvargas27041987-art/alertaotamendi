@@ -603,6 +603,9 @@ REGLAS GENERALES
 - No descartes automáticamente ningún reporte.
 - No unas reportes automáticamente.
 - La decisión final siempre corresponde al operador humano.
+- Si la categoría interna es "Delito / Robo", distinguí de manera orientativa entre posible HURTO y posible ROBO según los hechos descriptos, sin afirmar una calificación jurídica definitiva.
+- En Argentina, tratá como indicio de posible ROBO la existencia de fuerza en las cosas o violencia física en las personas; si solo se describe un apoderamiento sin esos elementos, indicá que podría ser un posible HURTO.
+- Si la información no alcanza para distinguirlos, escribí "Hurto / Robo" y explicá la incertidumbre.
 
 ==================================================
 PRIORIDAD

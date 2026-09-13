@@ -41,12 +41,12 @@ async function getNativeFcmToken() {
 }
 
 const categories = [
-  { icon: "🚨", title: "Delito / Robo", helper: "Robo, intento de robo o delito en curso", color: "bg-red-500" },
-  { icon: "👤", title: "Persona sospechosa", helper: "Conducta o presencia que te genera preocupación", color: "bg-orange-500" },
-  { icon: "🚗", title: "Vehículo sospechoso", helper: "Vehículo en situación inusual o sospechosa", color: "bg-yellow-500" },
-  { icon: "⚠️", title: "Accidente", helper: "Siniestro vial o situación con personas heridas", color: "bg-blue-500" },
-  { icon: "🔥", title: "Incendio", helper: "Fuego, humo o riesgo de propagación", color: "bg-purple-500" },
-  { icon: "🆘", title: "Emergencia", helper: "Situación urgente que requiere atención inmediata", color: "bg-emerald-500" },
+  { icon: "🚨", title: "Delito / Robo", label: "Hurto / Robo", helper: "Sustracción, intento de sustracción o hecho delictivo en curso", color: "bg-red-500" },
+  { icon: "👤", title: "Persona sospechosa", label: "Persona sospechosa", helper: "Conducta o presencia que te genera preocupación", color: "bg-orange-500" },
+  { icon: "🚗", title: "Vehículo sospechoso", label: "Vehículo sospechoso", helper: "Vehículo en situación inusual o sospechosa", color: "bg-yellow-500" },
+  { icon: "⚠️", title: "Accidente", label: "Accidente", helper: "Siniestro vial o situación con personas heridas", color: "bg-blue-500" },
+  { icon: "🔥", title: "Incendio", label: "Incendio", helper: "Fuego, humo o riesgo de propagación", color: "bg-purple-500" },
+  { icon: "🆘", title: "Emergencia", label: "Emergencia", helper: "Situación urgente que requiere atención inmediata", color: "bg-emerald-500" },
 ];
 
 const IMPORTANT_CATEGORIES = new Set([
@@ -1192,7 +1192,7 @@ export default function Home() {
               }`}
             >
               <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl ${category.color} text-xl`}>{category.icon}</div>
-              <p className="text-sm font-bold">{category.title}</p>
+              <p className="text-sm font-bold">{category.label ?? category.title}</p>
               <p className="mt-1 text-[11px] leading-4 text-slate-500">{category.helper}</p>
             </button>
           ))}
