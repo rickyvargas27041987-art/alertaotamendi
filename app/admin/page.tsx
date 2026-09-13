@@ -641,10 +641,15 @@ const [aiError, setAiError] = useState<string | null>(null);
       if (categoryFilter !== "todas" && report.category !== categoryFilter) return false;
       if (!term) return true;
 
+      // Si se escribe solamente un número (o #123), buscamos el reporte exacto.
+      const reportNumber = term.replace(/^#/, "");
+      if (/^\d+$/.test(reportNumber)) {
+        return String(report.id) === reportNumber;
+      }
+
       return (
         report.category.toLowerCase().includes(term) ||
-        report.description.toLowerCase().includes(term) ||
-        String(report.id).includes(term)
+        report.description.toLowerCase().includes(term)
       );
     });
   }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes]);
@@ -1074,7 +1079,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   setSearch(e.target.value);
                   setListLimit(12);
                 }}
-                placeholder="Buscar #, tipo o texto"
+                placeholder="Buscar N° de reporte, tipo o texto"
                 className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-slate-500"
               />
               <select

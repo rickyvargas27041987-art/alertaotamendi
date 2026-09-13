@@ -1168,16 +1168,19 @@ export default function MapaAlertasLeaflet({
               <button
                 type="button"
                 onClick={() => {
-                  if (!primaryJurisdiction) return;
-                  setAdminSelectedLocation(primaryJurisdiction);
+                  // Si el operador ya eligió provincia/localidad, «Mi jurisdicción»
+                  // respeta esa selección. Si no, vuelve a su zona asignada.
+                  const targetJurisdiction = adminSelectedLocation ?? primaryJurisdiction;
+                  if (!targetJurisdiction) return;
+                  setAdminSelectedLocation(targetJurisdiction);
                   setAdminLocationKey((value) => value + 1);
 
-                  if (primaryJurisdiction.localityId) {
-                    fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(primaryJurisdiction.localityId)}`)
+                  if (targetJurisdiction.localityId) {
+                    fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(targetJurisdiction.localityId)}`)
                       .then((response) => response.ok ? response.json() : null)
                       .then((data) => {
                         if (!data?.success || !Array.isArray(data.bounds)) return;
-                        setAdminSelectedLocation({ ...primaryJurisdiction, bounds: data.bounds });
+                        setAdminSelectedLocation({ ...targetJurisdiction, bounds: data.bounds });
                         setAdminLocationKey((value) => value + 1);
                       })
                       .catch((error) => console.warn("No se pudieron cargar límites de jurisdicción:", error));
