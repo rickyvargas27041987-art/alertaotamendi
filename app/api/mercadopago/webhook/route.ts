@@ -3,97 +3,243 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { addMonths } from "@/lib/subscription";
 
-function safeEqualHex(a: string, b: string) {
-  try {
-    const aa = Buffer.from(a.trim(), "hex");
-    const bb = Buffer.from(b.trim(), "hex");
+/*
+ * =========================================================
+ * VALIDACIÓN OFICIAL DE FIRMA MERCADO PAGO
+ * =========================================================
+ */
 
-    return aa.length === bb.length && timingSafeEqual(aa, bb);
-  } catch {
-    return false;
+function normalizeValue(
+  value: string | null | undefined
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
   }
+
+  const trimmed = String(value).trim();
+
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeSecret(value: string) {
-  let secret = value.trim();
+function parseSignatureHeader(header: string): {
+  ts?: string;
+  hashes: Record<string, string>;
+} {
+  const hashes: Record<string, string> = {};
 
-  if (
-    (secret.startsWith('"') && secret.endsWith('"')) ||
-    (secret.startsWith("'") && secret.endsWith("'"))
-  ) {
-    secret = secret.slice(1, -1).trim();
-  }
+  let ts: string | undefined;
 
-  return secret;
-}
+  for (const part of header.split(",")) {
+    const equalIndex = part.indexOf("=");
 
-function verifySignature(request: Request, dataId: string) {
-  const rawSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
-
-  if (!rawSecret) {
-    return true;
-  }
-
-  const secret = normalizeSecret(rawSecret);
-
-  const signature = (
-    request.headers.get("x-signature") || ""
-  ).trim();
-
-  const requestId = (
-    request.headers.get("x-request-id") || ""
-  ).trim();
-
-  const parts: Record<string, string> = {};
-
-  for (const item of signature.split(",")) {
-    const index = item.indexOf("=");
-
-    if (index === -1) {
+    if (equalIndex === -1) {
       continue;
     }
 
-    const key = item.slice(0, index).trim();
-    const value = item.slice(index + 1).trim();
+    const key = part
+      .substring(0, equalIndex)
+      .trim()
+      .toLowerCase();
 
-    if (key && value) {
-      parts[key] = value;
+    const value = part
+      .substring(equalIndex + 1)
+      .trim();
+
+    if (!key || !value) {
+      continue;
+    }
+
+    if (key === "ts") {
+      ts = value;
+    } else if (/^v\d+$/.test(key)) {
+      hashes[key] = value;
     }
   }
 
-  const ts = (parts.ts || "").trim();
-  const v1 = (parts.v1 || "").trim();
+  return {
+    ts,
+    hashes,
+  };
+}
 
-  if (!ts || !v1) {
-    return false;
-  }
-
-  let manifest = "";
+function buildManifest(
+  dataId: string | undefined,
+  requestId: string | undefined,
+  ts: string
+) {
+  const parts: string[] = [];
 
   if (dataId) {
-    manifest += `id:${dataId};`;
+    parts.push(`id:${dataId}`);
   }
 
   if (requestId) {
-    manifest += `request-id:${requestId};`;
+    parts.push(`request-id:${requestId}`);
   }
 
-  manifest += `ts:${ts};`;
+  parts.push(`ts:${ts}`);
 
-  const calculated = createHmac("sha256", secret)
+  return parts.join(";") + ";";
+}
+
+function constantTimeEquals(
+  calculated: string,
+  received: string
+) {
+  if (
+    Buffer.byteLength(calculated) !==
+    Buffer.byteLength(received)
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(
+    Buffer.from(calculated),
+    Buffer.from(received)
+  );
+}
+
+function verifySignature(
+  request: Request,
+  dataId: string
+): {
+  valid: boolean;
+  reason?: string;
+} {
+  const secret =
+    process.env.MERCADOPAGO_WEBHOOK_SECRET;
+
+  /*
+   * En producción debe existir.
+   */
+  if (!secret) {
+    return {
+      valid: false,
+      reason: "SECRET_NOT_CONFIGURED",
+    };
+  }
+
+  const xSignature = normalizeValue(
+    request.headers.get("x-signature")
+  );
+
+  const xRequestId = normalizeValue(
+    request.headers.get("x-request-id")
+  );
+
+  const normalizedDataId =
+    normalizeValue(dataId);
+
+  if (!xSignature) {
+    return {
+      valid: false,
+      reason: "MISSING_SIGNATURE",
+    };
+  }
+
+  const {
+    ts,
+    hashes,
+  } = parseSignatureHeader(xSignature);
+
+  if (!ts) {
+    return {
+      valid: false,
+      reason: "MISSING_TIMESTAMP",
+    };
+  }
+
+  if (!/^\d+$/.test(ts)) {
+    return {
+      valid: false,
+      reason: "INVALID_TIMESTAMP",
+    };
+  }
+
+  const receivedHash = hashes.v1;
+
+  if (!receivedHash) {
+    return {
+      valid: false,
+      reason: "MISSING_V1",
+    };
+  }
+
+  const manifest = buildManifest(
+    normalizedDataId,
+    xRequestId,
+    ts
+  );
+
+  const calculatedHash = createHmac(
+    "sha256",
+    secret
+  )
     .update(manifest)
     .digest("hex");
 
-  return safeEqualHex(calculated, v1);
+  const valid = constantTimeEquals(
+    calculatedHash,
+    receivedHash
+  );
+
+  if (!valid) {
+    /*
+     * No mostramos claves, hashes ni request-id.
+     * Solo datos seguros para diagnóstico.
+     */
+    console.warn(
+      "Webhook Mercado Pago: firma inválida.",
+      {
+        reason: "SIGNATURE_MISMATCH",
+        hasDataId: Boolean(
+          normalizedDataId
+        ),
+        hasRequestId: Boolean(
+          xRequestId
+        ),
+        hasSignature: Boolean(
+          xSignature
+        ),
+        secretConfigured: true,
+        secretLength: secret.length,
+        manifestLength:
+          manifest.length,
+        receivedHashLength:
+          receivedHash.length,
+        calculatedHashLength:
+          calculatedHash.length,
+      }
+    );
+
+    return {
+      valid: false,
+      reason: "SIGNATURE_MISMATCH",
+    };
+  }
+
+  return {
+    valid: true,
+  };
 }
+
+/*
+ * =========================================================
+ * BUSCAR USUARIO
+ * =========================================================
+ */
 
 async function findUserByExternalReference(
   externalReference: unknown,
   preapprovalId?: string
 ) {
-  const ref = String(externalReference ?? "");
+  const ref = String(
+    externalReference ?? ""
+  );
 
-  const match = ref.match(/^monitor-user-(\d+)$/);
+  const match = ref.match(
+    /^monitor-user-(\d+)$/
+  );
 
   if (match) {
     return prisma.monitoringUser.findUnique({
@@ -106,7 +252,8 @@ async function findUserByExternalReference(
   if (preapprovalId) {
     return prisma.monitoringUser.findFirst({
       where: {
-        mpPreapprovalId: preapprovalId,
+        mpPreapprovalId:
+          preapprovalId,
       },
     });
   }
@@ -114,61 +261,81 @@ async function findUserByExternalReference(
   return null;
 }
 
-export async function POST(request: Request) {
+/*
+ * =========================================================
+ * WEBHOOK
+ * =========================================================
+ */
+
+export async function POST(
+  request: Request
+) {
   try {
-    const url = new URL(request.url);
+    const url = new URL(
+      request.url
+    );
 
     const body = await request
       .json()
       .catch(() => ({}));
 
+    /*
+     * Mercado Pago firma usando data.id
+     * recibido en QUERY PARAMS.
+     */
     const queryDataId = String(
-      url.searchParams.get("data.id") ||
-        url.searchParams.get("data_id") ||
-        ""
-    ).trim();
+      url.searchParams.get(
+        "data.id"
+      ) || ""
+    );
 
+    /*
+     * ID real del recurso.
+     */
     const resourceId = String(
       queryDataId ||
-        url.searchParams.get("id") ||
         body?.data?.id ||
         body?.id ||
         ""
-    ).trim();
+    );
 
+    /*
+     * Tipo de evento.
+     */
     const type = String(
-      url.searchParams.get("type") ||
+      url.searchParams.get(
+        "type"
+      ) ||
         body?.type ||
         ""
-    ).trim();
+    );
 
-    if (!verifySignature(request, queryDataId)) {
+    /*
+     * =====================================================
+     * VALIDAR FIRMA
+     * =====================================================
+     */
+
+    const signatureCheck =
+      verifySignature(
+        request,
+        queryDataId
+      );
+
+    if (!signatureCheck.valid) {
       console.warn(
-        "Webhook Mercado Pago: firma inválida.",
+        "Webhook Mercado Pago rechazado:",
         {
-          hasQueryDataId: Boolean(queryDataId),
-          hasRequestId: Boolean(
-            request.headers.get("x-request-id")
-          ),
-          hasSignature: Boolean(
-            request.headers.get("x-signature")
-          ),
-          secretConfigured: Boolean(
-            process.env.MERCADOPAGO_WEBHOOK_SECRET
-          ),
-          secretLength:
-            process.env.MERCADOPAGO_WEBHOOK_SECRET
-              ? normalizeSecret(
-                  process.env.MERCADOPAGO_WEBHOOK_SECRET
-                ).length
-              : 0,
+          reason:
+            signatureCheck.reason,
         }
       );
 
       return NextResponse.json(
         {
           ok: false,
-          error: "Firma inválida.",
+          error:
+            "Firma inválida.",
         },
         {
           status: 401,
@@ -176,6 +343,9 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+     * Firma válida.
+     */
     if (!resourceId) {
       return NextResponse.json({
         ok: true,
@@ -184,7 +354,8 @@ export async function POST(request: Request) {
     }
 
     const token =
-      process.env.MERCADOPAGO_ACCESS_TOKEN;
+      process.env
+        .MERCADOPAGO_ACCESS_TOKEN;
 
     if (!token) {
       return NextResponse.json({
@@ -200,24 +371,33 @@ export async function POST(request: Request) {
      * SUSCRIPCIÓN
      * =====================================================
      */
-    if (type === "subscription_preapproval") {
-      const response = await fetch(
-        `https://api.mercadopago.com/preapproval/${encodeURIComponent(
-          resourceId
-        )}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
 
+    if (
+      type ===
+      "subscription_preapproval"
+    ) {
+      const response =
+        await fetch(
+          `https://api.mercadopago.com/preapproval/${encodeURIComponent(
+            resourceId
+          )}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      /*
+       * El simulador usa IDs
+       * ficticios como 123456.
+       */
       if (!response.ok) {
         return NextResponse.json({
           ok: true,
           received: true,
-          note:
-            "Notificación recibida. El recurso no existe o pertenece a una simulación.",
+          simulation: true,
         });
       }
 
@@ -228,7 +408,8 @@ export async function POST(request: Request) {
         await findUserByExternalReference(
           subscription.external_reference,
           String(
-            subscription.id || resourceId
+            subscription.id ||
+              resourceId
           )
         );
 
@@ -239,21 +420,30 @@ export async function POST(request: Request) {
         });
       }
 
-      const mpStatus = String(
-        subscription.status || ""
-      ).toLowerCase();
+      const mpStatus =
+        String(
+          subscription.status ||
+            ""
+        ).toLowerCase();
 
       let status:
         | "ACTIVE"
         | "PENDING"
         | "SUSPENDED"
-        | "CANCELED" = "PENDING";
+        | "CANCELED" =
+        "PENDING";
 
-      if (mpStatus === "authorized") {
+      if (
+        mpStatus === "authorized"
+      ) {
         status = "ACTIVE";
-      } else if (mpStatus === "cancelled") {
+      } else if (
+        mpStatus === "cancelled"
+      ) {
         status = "CANCELED";
-      } else if (mpStatus === "paused") {
+      } else if (
+        mpStatus === "paused"
+      ) {
         status = "SUSPENDED";
       }
 
@@ -261,8 +451,10 @@ export async function POST(request: Request) {
         where: {
           id: user.id,
         },
+
         data: {
-          subscriptionStatus: status,
+          subscriptionStatus:
+            status,
 
           subscriptionStartedAt:
             status === "ACTIVE"
@@ -270,61 +462,85 @@ export async function POST(request: Request) {
                 new Date()
               : user.subscriptionStartedAt,
 
-          subscriptionAutoRenew: true,
+          subscriptionAutoRenew:
+            true,
 
-          mpPreapprovalId: String(
-            subscription.id || resourceId
-          ),
+          mpPreapprovalId:
+            String(
+              subscription.id ||
+                resourceId
+            ),
 
           mpStatus,
         },
       });
 
-      if (status !== "ACTIVE") {
-        await prisma.monitorSession.deleteMany({
-          where: {
-            userId: user.id,
-          },
-        });
+      if (
+        status !== "ACTIVE"
+      ) {
+        await prisma.monitorSession.deleteMany(
+          {
+            where: {
+              userId: user.id,
+            },
+          }
+        );
       }
     }
 
     /*
      * =====================================================
      * PAGO AUTORIZADO DE SUSCRIPCIÓN
+     *
+     * Este es el evento que vimos
+     * realmente en Vercel:
+     *
+     * subscription_authorized_payment
      * =====================================================
      */
-    if (type === "subscription_authorized_payment") {
-      const response = await fetch(
-        `https://api.mercadopago.com/authorized_payments/${encodeURIComponent(
-          resourceId
-        )}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
 
+    if (
+      type ===
+      "subscription_authorized_payment"
+    ) {
+      const response =
+        await fetch(
+          `https://api.mercadopago.com/authorized_payments/${encodeURIComponent(
+            resourceId
+          )}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      /*
+       * Simulación.
+       */
       if (!response.ok) {
         return NextResponse.json({
           ok: true,
           received: true,
-          note:
-            "Pago autorizado recibido. El recurso no existe o pertenece a una simulación.",
+          simulation: true,
         });
       }
 
       const authorizedPayment =
         await response.json();
 
-      const preapprovalId = String(
-        authorizedPayment.preapproval_id || ""
-      );
+      const preapprovalId =
+        String(
+          authorizedPayment
+            .preapproval_id ||
+            ""
+        );
 
       const user =
         await findUserByExternalReference(
-          authorizedPayment.external_reference,
+          authorizedPayment
+            .external_reference,
           preapprovalId
         );
 
@@ -335,65 +551,101 @@ export async function POST(request: Request) {
         });
       }
 
-      const paymentStatus = String(
-        authorizedPayment.payment?.status || ""
-      ).toLowerCase();
+      const paymentStatus =
+        String(
+          authorizedPayment
+            .payment?.status ||
+            authorizedPayment.status ||
+            ""
+        ).toLowerCase();
 
-      const paymentId = String(
-        authorizedPayment.payment?.id ||
-          resourceId
-      );
+      const paymentId =
+        String(
+          authorizedPayment
+            .payment?.id ||
+            authorizedPayment.id ||
+            resourceId
+        );
 
-      if (paymentStatus === "approved") {
-        const base = new Date();
+      if (
+        paymentStatus ===
+        "approved"
+      ) {
+        const base =
+          new Date();
 
         const endsAt =
-          user.subscriptionPlan === "ANNUAL"
-            ? addMonths(base, 12)
-            : addMonths(base, 1);
+          user.subscriptionPlan ===
+          "ANNUAL"
+            ? addMonths(
+                base,
+                12
+              )
+            : addMonths(
+                base,
+                1
+              );
 
-        await prisma.monitoringUser.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            subscriptionStatus: "ACTIVE",
+        await prisma.monitoringUser.update(
+          {
+            where: {
+              id: user.id,
+            },
 
-            subscriptionStartedAt:
-              user.subscriptionStartedAt ??
-              base,
+            data: {
+              subscriptionStatus:
+                "ACTIVE",
 
-            subscriptionEndsAt: endsAt,
+              subscriptionStartedAt:
+                user.subscriptionStartedAt ??
+                base,
 
-            subscriptionAutoRenew: true,
+              subscriptionEndsAt:
+                endsAt,
 
-            mpLastPaymentAt: base,
+              subscriptionAutoRenew:
+                true,
 
-            mpLastPaymentId: paymentId,
-          },
-        });
+              mpLastPaymentAt:
+                base,
+
+              mpLastPaymentId:
+                paymentId,
+            },
+          }
+        );
       } else if (
-        ["rejected", "cancelled"].includes(
+        [
+          "rejected",
+          "cancelled",
+        ].includes(
           paymentStatus
         )
       ) {
-        await prisma.monitoringUser.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            subscriptionStatus:
-              "PAST_DUE",
+        await prisma.monitoringUser.update(
+          {
+            where: {
+              id: user.id,
+            },
 
-            mpLastPaymentId: paymentId,
-          },
-        });
+            data: {
+              subscriptionStatus:
+                "PAST_DUE",
 
-        await prisma.monitorSession.deleteMany({
-          where: {
-            userId: user.id,
-          },
-        });
+              mpLastPaymentId:
+                paymentId,
+            },
+          }
+        );
+
+        await prisma.monitorSession.deleteMany(
+          {
+            where: {
+              userId:
+                user.id,
+            },
+          }
+        );
       }
     }
 
@@ -402,28 +654,33 @@ export async function POST(request: Request) {
      * PAYMENT
      * =====================================================
      */
-    if (type === "payment") {
-      const response = await fetch(
-        `https://api.mercadopago.com/v1/payments/${encodeURIComponent(
-          resourceId
-        )}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+
+    if (
+      type === "payment"
+    ) {
+      const response =
+        await fetch(
+          `https://api.mercadopago.com/v1/payments/${encodeURIComponent(
+            resourceId
+          )}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
 
       if (!response.ok) {
         return NextResponse.json({
           ok: true,
           received: true,
-          note:
-            "Notificación de pago recibida. El recurso no existe o pertenece a una simulación.",
+          simulation: true,
         });
       }
 
-      const payment = await response.json();
+      const payment =
+        await response.json();
 
       const user =
         await findUserByExternalReference(
@@ -437,72 +694,107 @@ export async function POST(request: Request) {
         });
       }
 
-      const paymentStatus = String(
-        payment.status || ""
-      ).toLowerCase();
+      const paymentStatus =
+        String(
+          payment.status ||
+            ""
+        ).toLowerCase();
 
-      if (paymentStatus === "approved") {
-        const base = new Date();
+      if (
+        paymentStatus ===
+        "approved"
+      ) {
+        const base =
+          new Date();
 
         const endsAt =
-          user.subscriptionPlan === "ANNUAL"
-            ? addMonths(base, 12)
-            : addMonths(base, 1);
+          user.subscriptionPlan ===
+          "ANNUAL"
+            ? addMonths(
+                base,
+                12
+              )
+            : addMonths(
+                base,
+                1
+              );
 
-        await prisma.monitoringUser.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            subscriptionStatus: "ACTIVE",
+        await prisma.monitoringUser.update(
+          {
+            where: {
+              id: user.id,
+            },
 
-            subscriptionStartedAt:
-              user.subscriptionStartedAt ??
-              base,
+            data: {
+              subscriptionStatus:
+                "ACTIVE",
 
-            subscriptionEndsAt: endsAt,
+              subscriptionStartedAt:
+                user.subscriptionStartedAt ??
+                base,
 
-            subscriptionAutoRenew: true,
+              subscriptionEndsAt:
+                endsAt,
 
-            mpLastPaymentAt:
-              payment.date_approved
-                ? new Date(
-                    payment.date_approved
-                  )
-                : base,
+              subscriptionAutoRenew:
+                true,
 
-            mpLastPaymentId: String(
-              payment.id || resourceId
-            ),
-          },
-        });
+              mpLastPaymentAt:
+                payment.date_approved
+                  ? new Date(
+                      payment.date_approved
+                    )
+                  : base,
+
+              mpLastPaymentId:
+                String(
+                  payment.id ||
+                    resourceId
+                ),
+            },
+          }
+        );
       } else if (
-        ["rejected", "cancelled"].includes(
+        [
+          "rejected",
+          "cancelled",
+        ].includes(
           paymentStatus
         )
       ) {
-        await prisma.monitoringUser.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            subscriptionStatus:
-              "PAST_DUE",
+        await prisma.monitoringUser.update(
+          {
+            where: {
+              id: user.id,
+            },
 
-            mpLastPaymentId: String(
-              payment.id || resourceId
-            ),
-          },
-        });
+            data: {
+              subscriptionStatus:
+                "PAST_DUE",
 
-        await prisma.monitorSession.deleteMany({
-          where: {
-            userId: user.id,
-          },
-        });
+              mpLastPaymentId:
+                String(
+                  payment.id ||
+                    resourceId
+                ),
+            },
+          }
+        );
+
+        await prisma.monitorSession.deleteMany(
+          {
+            where: {
+              userId:
+                user.id,
+            },
+          }
+        );
       }
     }
 
+    /*
+     * Mercado Pago espera 200 o 201.
+     */
     return NextResponse.json({
       ok: true,
       received: true,
