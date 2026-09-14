@@ -1,5 +1,8 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
+import {
+  WebhookSignatureValidator,
+  InvalidWebhookSignatureError,
+} from "mercadopago";
 import { prisma } from "@/lib/prisma";
 import { addMonths } from "@/lib/subscription";
 
@@ -7,111 +10,14 @@ import { addMonths } from "@/lib/subscription";
  * =========================================================
  * VALIDACIÓN DE FIRMA MERCADO PAGO
  * =========================================================
- * Formato esperado por Mercado Pago:
- * id:<data.id>;request-id:<x-request-id>;ts:<ts>;
+ * Usamos el validador oficial del SDK de Mercado Pago.
+ *
+ * Mercado Pago valida con:
+ * - x-signature
+ * - x-request-id
+ * - data.id del query param
+ * - MERCADOPAGO_WEBHOOK_SECRET
  */
-
-function normalizeValue(
-  value: string | null | undefined
-): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const trimmed = String(value).trim();
-
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function parseSignatureHeader(header: string): {
-  ts?: string;
-  v1?: string;
-} {
-  let ts: string | undefined;
-  let v1: string | undefined;
-
-  for (const rawPart of header.split(",")) {
-    const part = rawPart.trim();
-    const equalIndex = part.indexOf("=");
-
-    if (equalIndex === -1) {
-      continue;
-    }
-
-    const key = part
-      .slice(0, equalIndex)
-      .trim()
-      .toLowerCase();
-
-    const value = part
-      .slice(equalIndex + 1)
-      .trim();
-
-    if (!key || !value) {
-      continue;
-    }
-
-    if (key === "ts") {
-      ts = value;
-    }
-
-    if (key === "v1") {
-      v1 = value.toLowerCase();
-    }
-  }
-
-  return {
-    ts,
-    v1,
-  };
-}
-
-function buildManifest(
-  dataId: string | undefined,
-  requestId: string | undefined,
-  ts: string
-) {
-  let manifest = "";
-
-  if (dataId) {
-    manifest += `id:${dataId};`;
-  }
-
-  if (requestId) {
-    manifest += `request-id:${requestId};`;
-  }
-
-  manifest += `ts:${ts};`;
-
-  return manifest;
-}
-
-function constantTimeHexEquals(
-  calculatedHex: string,
-  receivedHex: string
-) {
-  if (
-    !/^[a-f0-9]{64}$/i.test(calculatedHex) ||
-    !/^[a-f0-9]{64}$/i.test(receivedHex)
-  ) {
-    return false;
-  }
-
-  const calculated = Buffer.from(
-    calculatedHex,
-    "hex"
-  );
-
-  const received = Buffer.from(
-    receivedHex,
-    "hex"
-  );
-
-  return (
-    calculated.length === received.length &&
-    timingSafeEqual(calculated, received)
-  );
-}
 
 function verifySignature(
   request: Request,
@@ -120,17 +26,8 @@ function verifySignature(
   valid: boolean;
   reason?: string;
 } {
-  const rawSecret =
+  const secret =
     process.env.MERCADOPAGO_WEBHOOK_SECRET;
-
-  /*
-   * IMPORTANTE:
-   * Vercel puede conservar un salto de línea o espacio si
-   * la clave se pegó desde el portapapeles. Para HMAC eso
-   * cambia completamente el resultado, por eso normalizamos
-   * el secreto antes de usarlo.
-   */
-  const secret = normalizeValue(rawSecret);
 
   if (!secret) {
     return {
@@ -139,22 +36,11 @@ function verifySignature(
     };
   }
 
-  const xSignature = normalizeValue(
-    request.headers.get("x-signature")
-  );
+  const xSignature =
+    request.headers.get("x-signature");
 
-  const xRequestId = normalizeValue(
-    request.headers.get("x-request-id")
-  );
-
-  /*
-   * Mercado Pago normaliza data.id a minúsculas para
-   * construir la firma cuando el identificador es alfanumérico.
-   * Para IDs numéricos (por ejemplo 123456) no cambia nada.
-   */
-  const normalizedDataId = normalizeValue(
-    dataId
-  )?.toLowerCase();
+  const xRequestId =
+    request.headers.get("x-request-id");
 
   if (!xSignature) {
     return {
@@ -163,91 +49,58 @@ function verifySignature(
     };
   }
 
-  const {
-    ts,
-    v1,
-  } = parseSignatureHeader(xSignature);
-
-  if (!ts) {
+  if (!xRequestId) {
     return {
       valid: false,
-      reason: "MISSING_TIMESTAMP",
+      reason: "MISSING_REQUEST_ID",
     };
   }
 
-  if (!/^\d+$/.test(ts)) {
+  if (!dataId) {
     return {
       valid: false,
-      reason: "INVALID_TIMESTAMP",
+      reason: "MISSING_DATA_ID",
     };
   }
 
-  if (!v1) {
+  try {
+    WebhookSignatureValidator.validate({
+      xSignature,
+      xRequestId,
+      dataId,
+      secret,
+    });
+
     return {
-      valid: false,
-      reason: "MISSING_V1",
+      valid: true,
     };
-  }
+  } catch (error) {
+    const reason =
+      error instanceof InvalidWebhookSignatureError
+        ? "SIGNATURE_MISMATCH"
+        : "SIGNATURE_VALIDATION_ERROR";
 
-  const manifest = buildManifest(
-    normalizedDataId,
-    xRequestId,
-    ts
-  );
-
-  const calculatedHash = createHmac(
-    "sha256",
-    secret
-  )
-    .update(manifest, "utf8")
-    .digest("hex")
-    .toLowerCase();
-
-  const valid = constantTimeHexEquals(
-    calculatedHash,
-    v1
-  );
-
-  if (!valid) {
     console.warn(
       "Webhook Mercado Pago: firma inválida.",
       {
-        reason: "SIGNATURE_MISMATCH",
-        hasDataId: Boolean(
-          normalizedDataId
-        ),
-        hasRequestId: Boolean(
-          xRequestId
-        ),
-        hasSignature: Boolean(
-          xSignature
-        ),
+        reason,
+        hasDataId: Boolean(dataId),
+        hasRequestId: Boolean(xRequestId),
+        hasSignature: Boolean(xSignature),
         secretConfigured: true,
-        rawSecretLength:
-          rawSecret?.length ?? 0,
-        normalizedSecretLength:
-          secret.length,
-        secretWasTrimmed:
-          Boolean(rawSecret) &&
-          rawSecret !== secret,
-        manifestLength:
-          manifest.length,
-        receivedHashLength:
-          v1.length,
-        calculatedHashLength:
-          calculatedHash.length,
+        validator: "mercadopago-sdk",
+        errorName:
+          error instanceof Error
+            ? error.name
+            : "UnknownError",
       }
     );
 
     return {
       valid: false,
-      reason: "SIGNATURE_MISMATCH",
+      reason,
     };
   }
-
-  return {
-    valid: true,
-  };
 }
 
 /*
