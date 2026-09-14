@@ -17,25 +17,37 @@ model Report {
   videoUrl    String?
   audioUrl    String?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // OPERACIÓN DEL CENTRO DE MONITOREO
+  assignedToId   Int?
+  assignedAt     DateTime?
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  assignedTo     MonitoringUser? @relation("AssignedReports", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   // JURISDICCIÓN (resuelta automáticamente desde la ubicación)
-  province    String?
-  district    String?
-  locality    String?
+  province String?
+  district String?
+  locality String?
 
   // ANALISIS DE INTELIGENCIA ARTIFICIAL
-  aiAnalyzed      Boolean  @default(false)
-  aiCategory      String?
-  aiPriority      String?
-  aiSummary       String?
-  aiConfidence    Float?
-  aiPossibleSpam  Boolean?
-  aiReason        String?
-  aiAnalyzedAt    DateTime?
+  aiAnalyzed     Boolean   @default(false)
+  aiCategory     String?
+  aiPriority     String?
+  aiSummary      String?
+  aiConfidence   Float?
+  aiPossibleSpam Boolean?
+  aiReason       String?
+  aiAnalyzedAt   DateTime?
+
+  @@index([assignedToId])
+  @@index([status, createdAt])
+  @@index([province, district, locality])
 }
 
 model VehicleWatch {
-  id             Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // Reporte donde apareció originalmente el vehículo
   sourceReportId Int
@@ -169,37 +181,37 @@ model PushSubscription {
   updatedAt DateTime @updatedAt
 }
 
-
 model MonitoringUser {
-  id           Int      @id @default(autoincrement())
-  username     String   @unique
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
   name         String
   passwordHash String
-  role         String   @default("OPERATOR")
-  active       Boolean  @default(true)
+  role         String    @default("OPERATOR")
+  active       Boolean   @default(true)
   lastLoginAt  DateTime?
 
   // SUSCRIPCIÓN / ACCESO COMERCIAL AL CENTRO DE MONITOREO
-  billingEmail            String?
-  subscriptionPlan        String    @default("COURTESY")
-  subscriptionStatus      String    @default("ACTIVE")
-  subscriptionStartedAt   DateTime?
-  subscriptionEndsAt      DateTime?
-  subscriptionAutoRenew   Boolean   @default(false)
+  billingEmail          String?
+  subscriptionPlan      String    @default("COURTESY")
+  subscriptionStatus    String    @default("ACTIVE")
+  subscriptionStartedAt DateTime?
+  subscriptionEndsAt    DateTime?
+  subscriptionAutoRenew Boolean   @default(false)
 
   // Mercado Pago (nunca guardar el Access Token en la base)
-  mpPreapprovalId         String?   @unique
-  mpPlanId                String?
-  mpStatus                String?
-  mpLastPaymentAt         DateTime?
-  mpLastPaymentId         String?
+  mpPreapprovalId String?   @unique
+  mpPlanId        String?
+  mpStatus        String?
+  mpLastPaymentAt DateTime?
+  mpLastPaymentId String?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  zones        UserZone[]
-  sessions     MonitorSession[]
-  auditLogs    AuditLog[]
+  zones           UserZone[]
+  sessions        MonitorSession[]
+  auditLogs       AuditLog[]
+  assignedReports Report[]         @relation("AssignedReports")
 
   @@index([active])
   @@index([role])
@@ -209,23 +221,23 @@ model MonitoringUser {
 }
 
 model UserZone {
-  id        Int    @id @default(autoincrement())
-  userId    Int
-  province  String
-  district  String
-  locality  String?
-  user      MonitoringUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       Int            @id @default(autoincrement())
+  userId   Int
+  province String
+  district String
+  locality String?
+  user     MonitoringUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([province, district, locality])
 }
 
 model MonitorSession {
-  id        Int      @id @default(autoincrement())
+  id        Int            @id @default(autoincrement())
   userId    Int
-  tokenHash String   @unique
+  tokenHash String         @unique
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
   user      MonitoringUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -233,14 +245,14 @@ model MonitorSession {
 }
 
 model AuditLog {
-  id            Int      @id @default(autoincrement())
+  id            Int             @id @default(autoincrement())
   userId        Int?
   actorName     String
   actorUsername String
   action        String
   details       String?
   reportId      Int?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime        @default(now())
   user          MonitoringUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])

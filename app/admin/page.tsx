@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import PersonPatternAlerts from "../components/PersonPatternAlerts";
+import OperationalStatistics from "../components/OperationalStatistics";
 
 const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
   ssr: false,
@@ -19,6 +20,12 @@ type Report = {
   videoUrl: string | null;
   audioUrl: string | null;
   createdAt: string;
+  updatedAt?: string;
+  acknowledgedAt?: string | null;
+  resolvedAt?: string | null;
+  assignedAt?: string | null;
+  assignedToId?: number | null;
+  assignedTo?: { id: number; name: string; username: string } | null;
 
   aiAnalyzed?: boolean;
   aiCategory?: string | null;
@@ -145,6 +152,16 @@ function relativeTime(date: string) {
   return `hace ${Math.floor(hours / 24)} d`;
 }
 
+function alertAgeClass(report: Report) {
+  if (!esActiva(report.status)) return "opacity-60";
+  const minutes = Math.max(0, Date.now() - new Date(report.createdAt).getTime()) / 60000;
+  const priority = reportPriority(report);
+  if (priority === "critical" && !report.acknowledgedAt) return "border-red-400 ring-2 ring-red-500/25";
+  if (minutes <= 10) return "border-cyan-500/60 shadow-lg shadow-cyan-950/20";
+  if (minutes >= 120 && priority === "low") return "opacity-70";
+  return "border-slate-800";
+}
+
 function statusLabel(status: string) {
   switch (status) {
     case "pendiente":
@@ -215,6 +232,8 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [vehicleWatchLoading, setVehicleWatchLoading] = useState(false);
   const [vehicleWatchActionId, setVehicleWatchActionId] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<{
+    id?: number | null;
+    username?: string;
     role: string;
     name: string;
     zones?: Array<{ province: string; district: string; locality: string | null }>;
@@ -229,6 +248,9 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [historyPriority, setHistoryPriority] = useState("todas");
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
+  const [emergencyMode, setEmergencyMode] = useState(false);
+  const [operationLoading, setOperationLoading] = useState(false);
+  const [timeline, setTimeline] = useState<Array<{ id: number | string; actorName: string; action: string; details: string | null; createdAt: string }>>([]);
 
   const [mapFocusTarget, setMapFocusTarget] = useState<{
     latitude: number;
@@ -487,6 +509,8 @@ const [aiError, setAiError] = useState<string | null>(null);
   setRelatedSearch(null);
   setAiError(null);
   setSelectedAddress(null);
+  setTimeline([]);
+  void loadReportOperations(report.id);
 
   // El análisis automático ya viene guardado con el reporte.
   if (report.aiAnalyzed && report.aiCategory && report.aiPriority && report.aiSummary && report.aiConfidence !== null && report.aiConfidence !== undefined) {
@@ -514,6 +538,40 @@ const [aiError, setAiError] = useState<string | null>(null);
       .finally(() => setAddressLoading(false));
   }
 }
+
+  async function loadReportOperations(reportId: number) {
+    try {
+      const response = await fetch(`/api/admin/report-operations?reportId=${reportId}`, { cache: "no-store" });
+      const data = await response.json();
+      if (response.ok && data.success) setTimeline(Array.isArray(data.timeline) ? data.timeline : []);
+    } catch (error) {
+      console.error("No se pudo cargar la línea de tiempo:", error);
+    }
+  }
+
+  async function reportOperation(reportId: number, action: "claim" | "release" | "acknowledge") {
+    try {
+      setOperationLoading(true);
+      const response = await fetch("/api/admin/report-operations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId, action }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        window.alert(data.error || "No se pudo completar la operación.");
+        return;
+      }
+      setSelectedReport((previous) => previous?.id === reportId ? { ...previous, ...data.report } : previous);
+      await Promise.all([loadReports(), loadReportOperations(reportId)]);
+    } catch (error) {
+      console.error(error);
+      window.alert("No se pudo completar la operación.");
+    } finally {
+      setOperationLoading(false);
+    }
+  }
+
   async function analyzeReportWithAi(reportId: number) {
   try {
     setAiLoading(true);
@@ -628,6 +686,7 @@ const [aiError, setAiError] = useState<string | null>(null);
 
     return reports.filter((report) => {
       if (!esActiva(report.status)) return false;
+      if (emergencyMode && !["critical", "high"].includes(reportPriority(report))) return false;
       if (report.latitude === null || report.longitude === null) return false;
       if (mapPeriod === "todas") return true;
 
@@ -644,12 +703,13 @@ const [aiError, setAiError] = useState<string | null>(null);
 
       return true;
     });
-  }, [reports, mapPeriod]);
+  }, [reports, mapPeriod, emergencyMode]);
 
   const filteredReports = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     return reports.filter((report) => {
+      if (emergencyMode && !["critical", "high"].includes(reportPriority(report))) return false;
       if (onlyUnreviewed && !alertasCriticasPendientes.includes(report.id)) return false;
       if (statusFilter !== "todos" && report.status !== statusFilter) return false;
       if (categoryFilter !== "todas" && report.category !== categoryFilter) return false;
@@ -666,7 +726,7 @@ const [aiError, setAiError] = useState<string | null>(null);
         report.description.toLowerCase().includes(term)
       );
     });
-  }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes]);
+  }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes, emergencyMode]);
 
   const historyReports = useMemo(() => {
     const term = historySearch.trim().toLowerCase();
@@ -688,34 +748,6 @@ const [aiError, setAiError] = useState<string | null>(null);
         .some((value) => String(value).toLowerCase().includes(term));
     });
   }, [reports, historySearch, historyStatus, historyCategory, historyPriority, historyFrom, historyTo]);
-
-  const historyStats = useMemo(() => {
-    const byCategory = new Map<string, number>();
-    const byStatus = new Map<string, number>();
-    const byPriority = new Map<string, number>();
-    const byHour = Array.from({ length: 24 }, () => 0);
-    const byLocality = new Map<string, number>();
-
-    for (const report of historyReports) {
-      byCategory.set(report.category, (byCategory.get(report.category) ?? 0) + 1);
-      byStatus.set(report.status, (byStatus.get(report.status) ?? 0) + 1);
-      const priority = reportPriority(report);
-      byPriority.set(priority, (byPriority.get(priority) ?? 0) + 1);
-      const hour = new Date(report.createdAt).getHours();
-      if (Number.isInteger(hour) && hour >= 0 && hour < 24) byHour[hour] += 1;
-      const locality = report.locality || report.district || report.province || "Sin localidad";
-      byLocality.set(locality, (byLocality.get(locality) ?? 0) + 1);
-    }
-
-    const busiestHour = byHour.reduce((best, count, hour) => count > best.count ? { hour, count } : best, { hour: 0, count: 0 });
-    return {
-      byCategory: [...byCategory.entries()].sort((a, b) => b[1] - a[1]),
-      byStatus: [...byStatus.entries()].sort((a, b) => b[1] - a[1]),
-      byPriority: [...byPriority.entries()].sort((a, b) => b[1] - a[1]),
-      byLocality: [...byLocality.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10),
-      busiestHour,
-    };
-  }, [historyReports]);
 
   const hotZoneSummary = useMemo(() => {
     const groups = new Map<string, { count: number; latitude: number; longitude: number; categories: Map<string, number>; locality: string }>();
@@ -821,6 +853,13 @@ const [aiError, setAiError] = useState<string | null>(null);
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setEmergencyMode((value) => !value)}
+              className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${emergencyMode ? "border-red-300 bg-red-600 text-white shadow-lg shadow-red-950/40 animate-pulse" : "border-red-500/40 bg-red-950/30 text-red-200 hover:bg-red-900/50"}`}
+              title="Oculta temporalmente lo no urgente para concentrar la operación"
+            >
+              {emergencyMode ? "🚨 MODO EMERGENCIA ACTIVO" : "🚨 Modo emergencia"}
+            </button>
             <div className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-right">
               <p className="text-lg font-black tabular-nums">
                 {now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -1209,7 +1248,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           ) : (
             <div className="mt-5 space-y-3">
               {filteredReports.slice(0, listLimit).map((report) => (
-                <article key={report.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                <article key={report.id} className={`rounded-2xl border bg-slate-950 p-4 transition ${alertAgeClass(report)}`}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1229,6 +1268,9 @@ const [aiError, setAiError] = useState<string | null>(null);
                         )}
                         {alertasCriticasPendientes.includes(report.id) && (
                           <span className="rounded-full bg-red-600 px-2 py-1 text-[10px] font-black animate-pulse">SIN REVISAR</span>
+                        )}
+                        {report.assignedTo && (
+                          <span className="rounded-full border border-cyan-500/30 bg-cyan-950/40 px-2 py-1 text-[10px] font-bold text-cyan-200">👤 {report.assignedTo.name}</span>
                         )}
                       </div>
                       <h3 className="mt-2 text-lg font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</h3>
@@ -1342,19 +1384,8 @@ const [aiError, setAiError] = useState<string | null>(null);
               )}
 
               {historyTab === "estadisticas" && (
-                <div className="mt-4 space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs text-slate-500">Reportes analizados</p><p className="mt-1 text-3xl font-black">{historyReports.length}</p></div>
-                    <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-4"><p className="text-xs text-red-300">Críticos</p><p className="mt-1 text-3xl font-black">{historyReports.filter(r => reportPriority(r) === "critical").length}</p></div>
-                    <div className="rounded-2xl border border-orange-500/30 bg-orange-950/20 p-4"><p className="text-xs text-orange-300">Alta prioridad</p><p className="mt-1 text-3xl font-black">{historyReports.filter(r => reportPriority(r) === "high").length}</p></div>
-                    <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4"><p className="text-xs text-cyan-300">Franja con más actividad</p><p className="mt-1 text-xl font-black">{historyStats.busiestHour.count > 0 ? `${String(historyStats.busiestHour.hour).padStart(2, "0")}:00–${String((historyStats.busiestHour.hour + 1) % 24).padStart(2, "0")}:00` : "—"}</p></div>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por categoría</h3><div className="mt-3 space-y-2">{historyStats.byCategory.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{displayCategory(name)}</span><b>{count}</b></div>)}</div></div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por localidad</h3><div className="mt-3 space-y-2">{historyStats.byLocality.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{name}</span><b>{count}</b></div>)}</div></div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por prioridad</h3><div className="mt-3 space-y-2">{historyStats.byPriority.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{name === "critical" ? "🔴 Crítica" : name === "high" ? "🟠 Alta" : name === "medium" ? "🟡 Media" : "🟢 Baja"}</span><b>{count}</b></div>)}</div></div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4"><h3 className="font-black">Por estado</h3><div className="mt-3 space-y-2">{historyStats.byStatus.map(([name, count]) => <div key={name} className="flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-sm"><span>{statusLabel(name)}</span><b>{count}</b></div>)}</div></div>
-                  </div>
+                <div className="mt-4">
+                  <OperationalStatistics reports={historyReports} />
                 </div>
               )}
 
@@ -1395,6 +1426,40 @@ const [aiError, setAiError] = useState<string | null>(null);
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Descripción</p>
                   <p className="mt-2 leading-6 text-slate-200">{selectedReport.description}</p>
+                </div>
+
+                <div className="rounded-2xl border border-blue-500/30 bg-blue-950/20 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-blue-300">👤 Responsable operativo</p>
+                      <p className="mt-1 font-bold text-white">
+                        {selectedReport.assignedTo ? `Atendida por ${selectedReport.assignedTo.name}` : "Alerta todavía sin asignar"}
+                      </p>
+                      {selectedReport.assignedAt && <p className="mt-1 text-xs text-slate-400">Asignada {relativeTime(selectedReport.assignedAt)}</p>}
+                    </div>
+                    {selectedReport.assignedTo ? (
+                      <button onClick={() => void reportOperation(selectedReport.id, "release")} disabled={operationLoading} className="rounded-xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-bold disabled:opacity-50">Liberar alerta</button>
+                    ) : (
+                      <button onClick={() => void reportOperation(selectedReport.id, currentUser?.id ? "claim" : "acknowledge")} disabled={operationLoading} className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black hover:bg-blue-500 disabled:opacity-50">{operationLoading ? "Guardando…" : currentUser?.id ? "✋ Tomar alerta" : "✓ Marcar como revisada"}</button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-violet-500/25 bg-violet-950/15 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-violet-300">🕒 Línea de tiempo del incidente</p>
+                  <div className="mt-4 space-y-3 border-l-2 border-violet-500/30 pl-4">
+                    {timeline.length === 0 && <p className="text-sm text-slate-500">Cargando actividad…</p>}
+                    {timeline.map((event) => (
+                      <div key={event.id} className="relative rounded-xl bg-slate-950 p-3">
+                        <span className="absolute -left-[23px] top-4 h-3 w-3 rounded-full border-2 border-violet-300 bg-slate-950" />
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <b className="text-sm text-slate-200">{event.action === "REPORT_CREATED" ? "Alerta recibida" : event.action === "REPORT_CLAIMED" ? "Operador asignado" : event.action === "REPORT_STATUS_CHANGED" ? "Estado actualizado" : event.action === "REPORT_RELEASED" ? "Alerta liberada" : "Actividad registrada"}</b>
+                          <span className="text-[11px] text-slate-500">{formatDate(event.createdAt)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">{event.details || event.actorName} · {event.actorName}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {(selectedReport.imageUrl || selectedReport.videoUrl || selectedReport.audioUrl) && (

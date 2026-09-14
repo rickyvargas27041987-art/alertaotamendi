@@ -560,14 +560,23 @@ export async function GET() {
      */
     const actor = await getMonitorActor();
     if (actor) {
-      const reports =
+      const allReports =
         await prisma.report.findMany(
           {
             orderBy: {
               createdAt: "desc",
             },
+            include: {
+              assignedTo: { select: { id: true, name: true, username: true } },
+            },
           }
         );
+
+      // Un operador solamente recibe reportes pertenecientes a sus zonas.
+      // El administrador conserva la visión nacional.
+      const reports = actor.role === "ADMIN"
+        ? allReports
+        : allReports.filter((report) => canOperateReport(actor, report));
 
       return NextResponse.json(
         {
@@ -986,6 +995,11 @@ export async function PATCH(
 
           data: {
             status,
+            acknowledgedAt: currentReport.status === "pendiente" && status !== "pendiente" ? new Date() : undefined,
+            resolvedAt: ["resuelta", "descartada"].includes(status) ? new Date() : status === "pendiente" ? null : undefined,
+          },
+          include: {
+            assignedTo: { select: { id: true, name: true, username: true } },
           },
         }
       );
