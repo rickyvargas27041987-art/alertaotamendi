@@ -5,8 +5,8 @@ import { addMonths } from "@/lib/subscription";
 
 function safeEqualHex(a: string, b: string) {
   try {
-    const aa = Buffer.from(a, "hex");
-    const bb = Buffer.from(b, "hex");
+    const aa = Buffer.from(a.trim(), "hex");
+    const bb = Buffer.from(b.trim(), "hex");
 
     return aa.length === bb.length && timingSafeEqual(aa, bb);
   } catch {
@@ -14,50 +14,64 @@ function safeEqualHex(a: string, b: string) {
   }
 }
 
-function verifySignature(
-  request: Request,
-  queryDataId: string
-) {
-  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+function normalizeSecret(value: string) {
+  let secret = value.trim();
 
-  if (!secret) {
+  if (
+    (secret.startsWith('"') && secret.endsWith('"')) ||
+    (secret.startsWith("'") && secret.endsWith("'"))
+  ) {
+    secret = secret.slice(1, -1).trim();
+  }
+
+  return secret;
+}
+
+function verifySignature(request: Request, dataId: string) {
+  const rawSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+
+  if (!rawSecret) {
     return true;
   }
 
-  const signature =
-    request.headers.get("x-signature") || "";
+  const secret = normalizeSecret(rawSecret);
 
-  const requestId =
-    request.headers.get("x-request-id") || "";
+  const signature = (
+    request.headers.get("x-signature") || ""
+  ).trim();
+
+  const requestId = (
+    request.headers.get("x-request-id") || ""
+  ).trim();
 
   const parts: Record<string, string> = {};
 
-  for (const part of signature.split(",")) {
-    const [key, ...valueParts] = part.trim().split("=");
+  for (const item of signature.split(",")) {
+    const index = item.indexOf("=");
 
-    if (key && valueParts.length > 0) {
-      parts[key] = valueParts.join("=");
+    if (index === -1) {
+      continue;
+    }
+
+    const key = item.slice(0, index).trim();
+    const value = item.slice(index + 1).trim();
+
+    if (key && value) {
+      parts[key] = value;
     }
   }
 
-  const ts = parts.ts || "";
-  const v1 = parts.v1 || "";
+  const ts = (parts.ts || "").trim();
+  const v1 = (parts.v1 || "").trim();
 
   if (!ts || !v1) {
     return false;
   }
 
-  /*
-   * IMPORTANTE:
-   * Mercado Pago firma usando data.id DEL QUERY PARAM.
-   *
-   * Si data.id no vino en la URL, NO debemos sustituirlo
-   * por body.data.id para validar la firma.
-   */
   let manifest = "";
 
-  if (queryDataId) {
-    manifest += `id:${queryDataId};`;
+  if (dataId) {
+    manifest += `id:${dataId};`;
   }
 
   if (requestId) {
@@ -108,43 +122,26 @@ export async function POST(request: Request) {
       .json()
       .catch(() => ({}));
 
-    /*
-     * ID usado EXCLUSIVAMENTE para validar la firma.
-     *
-     * Mercado Pago especifica que debe salir del query param.
-     */
     const queryDataId = String(
       url.searchParams.get("data.id") ||
-      url.searchParams.get("data_id") ||
-      ""
-    );
+        url.searchParams.get("data_id") ||
+        ""
+    ).trim();
 
-    /*
-     * ID del recurso que después utilizamos para consultar
-     * Mercado Pago.
-     *
-     * Aquí sí podemos aceptar distintas variantes,
-     * incluido el cuerpo de la simulación.
-     */
     const resourceId = String(
       queryDataId ||
-      url.searchParams.get("id") ||
-      body?.data?.id ||
-      body?.id ||
-      ""
-    );
+        url.searchParams.get("id") ||
+        body?.data?.id ||
+        body?.id ||
+        ""
+    ).trim();
 
     const type = String(
       url.searchParams.get("type") ||
-      body?.type ||
-      ""
-    );
+        body?.type ||
+        ""
+    ).trim();
 
-    /*
-     * Validamos ANTES de procesar cualquier dato.
-     *
-     * Para la firma usamos solamente queryDataId.
-     */
     if (!verifySignature(request, queryDataId)) {
       console.warn(
         "Webhook Mercado Pago: firma inválida.",
@@ -156,6 +153,15 @@ export async function POST(request: Request) {
           hasSignature: Boolean(
             request.headers.get("x-signature")
           ),
+          secretConfigured: Boolean(
+            process.env.MERCADOPAGO_WEBHOOK_SECRET
+          ),
+          secretLength:
+            process.env.MERCADOPAGO_WEBHOOK_SECRET
+              ? normalizeSecret(
+                  process.env.MERCADOPAGO_WEBHOOK_SECRET
+                ).length
+              : 0,
         }
       );
 
@@ -170,10 +176,6 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * Si la firma fue válida pero no encontramos ID,
-     * confirmamos recepción.
-     */
     if (!resourceId) {
       return NextResponse.json({
         ok: true,
@@ -195,7 +197,7 @@ export async function POST(request: Request) {
 
     /*
      * =====================================================
-     * SUSCRIPCIONES
+     * SUSCRIPCIÓN
      * =====================================================
      */
     if (type === "subscription_preapproval") {
@@ -210,18 +212,12 @@ export async function POST(request: Request) {
         }
       );
 
-      /*
-       * El simulador usa IDs ficticios como 123456.
-       * Puede devolver 404 al consultar ese recurso.
-       *
-       * Eso NO significa que el webhook haya fallado.
-       */
       if (!response.ok) {
         return NextResponse.json({
           ok: true,
           received: true,
           note:
-            "Notificación recibida correctamente. El recurso no existe o pertenece a una simulación.",
+            "Notificación recibida. El recurso no existe o pertenece a una simulación.",
         });
       }
 
@@ -240,8 +236,6 @@ export async function POST(request: Request) {
         return NextResponse.json({
           ok: true,
           received: true,
-          note:
-            "Suscripción recibida pero no vinculada a un usuario del Centro de Monitoreo.",
         });
       }
 
@@ -267,7 +261,6 @@ export async function POST(request: Request) {
         where: {
           id: user.id,
         },
-
         data: {
           subscriptionStatus: status,
 
@@ -298,7 +291,115 @@ export async function POST(request: Request) {
 
     /*
      * =====================================================
-     * PAGOS
+     * PAGO AUTORIZADO DE SUSCRIPCIÓN
+     * =====================================================
+     */
+    if (type === "subscription_authorized_payment") {
+      const response = await fetch(
+        `https://api.mercadopago.com/authorized_payments/${encodeURIComponent(
+          resourceId
+        )}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        return NextResponse.json({
+          ok: true,
+          received: true,
+          note:
+            "Pago autorizado recibido. El recurso no existe o pertenece a una simulación.",
+        });
+      }
+
+      const authorizedPayment =
+        await response.json();
+
+      const preapprovalId = String(
+        authorizedPayment.preapproval_id || ""
+      );
+
+      const user =
+        await findUserByExternalReference(
+          authorizedPayment.external_reference,
+          preapprovalId
+        );
+
+      if (!user) {
+        return NextResponse.json({
+          ok: true,
+          received: true,
+        });
+      }
+
+      const paymentStatus = String(
+        authorizedPayment.payment?.status || ""
+      ).toLowerCase();
+
+      const paymentId = String(
+        authorizedPayment.payment?.id ||
+          resourceId
+      );
+
+      if (paymentStatus === "approved") {
+        const base = new Date();
+
+        const endsAt =
+          user.subscriptionPlan === "ANNUAL"
+            ? addMonths(base, 12)
+            : addMonths(base, 1);
+
+        await prisma.monitoringUser.update({
+          where: {
+            id: user.id,
+          },
+          data: {
+            subscriptionStatus: "ACTIVE",
+
+            subscriptionStartedAt:
+              user.subscriptionStartedAt ??
+              base,
+
+            subscriptionEndsAt: endsAt,
+
+            subscriptionAutoRenew: true,
+
+            mpLastPaymentAt: base,
+
+            mpLastPaymentId: paymentId,
+          },
+        });
+      } else if (
+        ["rejected", "cancelled"].includes(
+          paymentStatus
+        )
+      ) {
+        await prisma.monitoringUser.update({
+          where: {
+            id: user.id,
+          },
+          data: {
+            subscriptionStatus:
+              "PAST_DUE",
+
+            mpLastPaymentId: paymentId,
+          },
+        });
+
+        await prisma.monitorSession.deleteMany({
+          where: {
+            userId: user.id,
+          },
+        });
+      }
+    }
+
+    /*
+     * =====================================================
+     * PAYMENT
      * =====================================================
      */
     if (type === "payment") {
@@ -333,8 +434,6 @@ export async function POST(request: Request) {
         return NextResponse.json({
           ok: true,
           received: true,
-          note:
-            "Pago recibido pero no vinculado a un usuario del Centro de Monitoreo.",
         });
       }
 
@@ -354,7 +453,6 @@ export async function POST(request: Request) {
           where: {
             id: user.id,
           },
-
           data: {
             subscriptionStatus: "ACTIVE",
 
@@ -387,7 +485,6 @@ export async function POST(request: Request) {
           where: {
             id: user.id,
           },
-
           data: {
             subscriptionStatus:
               "PAST_DUE",
@@ -406,10 +503,6 @@ export async function POST(request: Request) {
       }
     }
 
-    /*
-     * Mercado Pago espera 200 o 201 cuando
-     * recibimos correctamente la notificación.
-     */
     return NextResponse.json({
       ok: true,
       received: true,
