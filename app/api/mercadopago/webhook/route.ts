@@ -5,8 +5,10 @@ import { addMonths } from "@/lib/subscription";
 
 /*
  * =========================================================
- * VALIDACIÓN OFICIAL DE FIRMA MERCADO PAGO
+ * VALIDACIÓN DE FIRMA MERCADO PAGO
  * =========================================================
+ * Formato esperado por Mercado Pago:
+ * id:<data.id>;request-id:<x-request-id>;ts:<ts>;
  */
 
 function normalizeValue(
@@ -23,13 +25,13 @@ function normalizeValue(
 
 function parseSignatureHeader(header: string): {
   ts?: string;
-  hashes: Record<string, string>;
+  v1?: string;
 } {
-  const hashes: Record<string, string> = {};
-
   let ts: string | undefined;
+  let v1: string | undefined;
 
-  for (const part of header.split(",")) {
+  for (const rawPart of header.split(",")) {
+    const part = rawPart.trim();
     const equalIndex = part.indexOf("=");
 
     if (equalIndex === -1) {
@@ -37,12 +39,12 @@ function parseSignatureHeader(header: string): {
     }
 
     const key = part
-      .substring(0, equalIndex)
+      .slice(0, equalIndex)
       .trim()
       .toLowerCase();
 
     const value = part
-      .substring(equalIndex + 1)
+      .slice(equalIndex + 1)
       .trim();
 
     if (!key || !value) {
@@ -51,14 +53,16 @@ function parseSignatureHeader(header: string): {
 
     if (key === "ts") {
       ts = value;
-    } else if (/^v\d+$/.test(key)) {
-      hashes[key] = value;
+    }
+
+    if (key === "v1") {
+      v1 = value.toLowerCase();
     }
   }
 
   return {
     ts,
-    hashes,
+    v1,
   };
 }
 
@@ -67,35 +71,45 @@ function buildManifest(
   requestId: string | undefined,
   ts: string
 ) {
-  const parts: string[] = [];
+  let manifest = "";
 
   if (dataId) {
-    parts.push(`id:${dataId}`);
+    manifest += `id:${dataId};`;
   }
 
   if (requestId) {
-    parts.push(`request-id:${requestId}`);
+    manifest += `request-id:${requestId};`;
   }
 
-  parts.push(`ts:${ts}`);
+  manifest += `ts:${ts};`;
 
-  return parts.join(";") + ";";
+  return manifest;
 }
 
-function constantTimeEquals(
-  calculated: string,
-  received: string
+function constantTimeHexEquals(
+  calculatedHex: string,
+  receivedHex: string
 ) {
   if (
-    Buffer.byteLength(calculated) !==
-    Buffer.byteLength(received)
+    !/^[a-f0-9]{64}$/i.test(calculatedHex) ||
+    !/^[a-f0-9]{64}$/i.test(receivedHex)
   ) {
     return false;
   }
 
-  return timingSafeEqual(
-    Buffer.from(calculated),
-    Buffer.from(received)
+  const calculated = Buffer.from(
+    calculatedHex,
+    "hex"
+  );
+
+  const received = Buffer.from(
+    receivedHex,
+    "hex"
+  );
+
+  return (
+    calculated.length === received.length &&
+    timingSafeEqual(calculated, received)
   );
 }
 
@@ -106,12 +120,18 @@ function verifySignature(
   valid: boolean;
   reason?: string;
 } {
-  const secret =
+  const rawSecret =
     process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
   /*
-   * En producción debe existir.
+   * IMPORTANTE:
+   * Vercel puede conservar un salto de línea o espacio si
+   * la clave se pegó desde el portapapeles. Para HMAC eso
+   * cambia completamente el resultado, por eso normalizamos
+   * el secreto antes de usarlo.
    */
+  const secret = normalizeValue(rawSecret);
+
   if (!secret) {
     return {
       valid: false,
@@ -127,8 +147,14 @@ function verifySignature(
     request.headers.get("x-request-id")
   );
 
-  const normalizedDataId =
-    normalizeValue(dataId);
+  /*
+   * Mercado Pago normaliza data.id a minúsculas para
+   * construir la firma cuando el identificador es alfanumérico.
+   * Para IDs numéricos (por ejemplo 123456) no cambia nada.
+   */
+  const normalizedDataId = normalizeValue(
+    dataId
+  )?.toLowerCase();
 
   if (!xSignature) {
     return {
@@ -139,7 +165,7 @@ function verifySignature(
 
   const {
     ts,
-    hashes,
+    v1,
   } = parseSignatureHeader(xSignature);
 
   if (!ts) {
@@ -156,9 +182,7 @@ function verifySignature(
     };
   }
 
-  const receivedHash = hashes.v1;
-
-  if (!receivedHash) {
+  if (!v1) {
     return {
       valid: false,
       reason: "MISSING_V1",
@@ -175,19 +199,16 @@ function verifySignature(
     "sha256",
     secret
   )
-    .update(manifest)
-    .digest("hex");
+    .update(manifest, "utf8")
+    .digest("hex")
+    .toLowerCase();
 
-  const valid = constantTimeEquals(
+  const valid = constantTimeHexEquals(
     calculatedHash,
-    receivedHash
+    v1
   );
 
   if (!valid) {
-    /*
-     * No mostramos claves, hashes ni request-id.
-     * Solo datos seguros para diagnóstico.
-     */
     console.warn(
       "Webhook Mercado Pago: firma inválida.",
       {
@@ -202,11 +223,17 @@ function verifySignature(
           xSignature
         ),
         secretConfigured: true,
-        secretLength: secret.length,
+        rawSecretLength:
+          rawSecret?.length ?? 0,
+        normalizedSecretLength:
+          secret.length,
+        secretWasTrimmed:
+          Boolean(rawSecret) &&
+          rawSecret !== secret,
         manifestLength:
           manifest.length,
         receivedHashLength:
-          receivedHash.length,
+          v1.length,
         calculatedHashLength:
           calculatedHash.length,
       }
@@ -286,7 +313,11 @@ export async function POST(
     const queryDataId = String(
       url.searchParams.get(
         "data.id"
-      ) || ""
+      ) ||
+        url.searchParams.get(
+          "data_id"
+        ) ||
+        ""
     );
 
     /*
