@@ -43,11 +43,11 @@ export async function GET(request: Request) {
       : "https://alertaotamendi.vercel.app");
 
   const payload = {
-    reason: "Alerta Otamendi - Centro de Monitoreo Mensual",
+    reason: "Alerta Otamendi - PRUEBA suscripción mensual",
     auto_recurring: {
       frequency: 1,
       frequency_type: "months",
-      transaction_amount: 200000,
+      transaction_amount: 100,
       currency_id: "ARS",
     },
     back_url: `${origin}/admin/usuarios`,
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     success: true,
-    message: "Plan mensual creado correctamente.",
+    message: "Plan de prueba mensual creado correctamente.",
     planId: data.id,
     reason: data.reason,
     amount: data.auto_recurring?.transaction_amount,
