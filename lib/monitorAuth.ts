@@ -8,7 +8,7 @@ export type MonitorActor = {
   id: number | null;
   username: string;
   name: string;
-  role: "ADMIN" | "OPERATOR";
+  role: "ADMIN" | "OPERATOR" | "INSTITUTIONAL";
   zones: Array<{ province: string; district: string; locality: string | null }>;
   subscription?: {
     plan: string;
@@ -73,7 +73,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
     id: session.user.id,
     username: session.user.username,
     name: session.user.name,
-    role: session.user.role as "ADMIN" | "OPERATOR",
+    role: session.user.role as "ADMIN" | "OPERATOR" | "INSTITUTIONAL",
     zones: session.user.zones.map(z => ({ province: z.province, district: z.district, locality: z.locality })),
     subscription: {
       plan: session.user.subscriptionPlan,
@@ -85,7 +85,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
   };
 }
 
-export function canOperateReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
+function zoneAllowsReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
   if (actor.role === "ADMIN") return true;
   if (!report.province || !report.district) return false;
   const norm = (s: string | null) => (s ?? "").trim().toLocaleLowerCase("es-AR");
@@ -94,6 +94,18 @@ export function canOperateReport(actor: MonitorActor, report: { province: string
     norm(z.district) === norm(report.district) &&
     (!z.locality || norm(z.locality) === norm(report.locality))
   );
+}
+
+export function canViewReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
+  return zoneAllowsReport(actor, report);
+}
+
+export function canOperateReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
+  return actor.role !== "INSTITUTIONAL" && zoneAllowsReport(actor, report);
+}
+
+export function canManageCenter(actor: MonitorActor) {
+  return actor.role === "ADMIN" || actor.role === "OPERATOR";
 }
 
 export async function audit(actor: MonitorActor, action: string, details?: string, reportId?: number) {

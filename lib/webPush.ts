@@ -13,6 +13,7 @@ type PushPayload = {
   tag?: string;
   reportId?: number | null;
   priority?: "critical" | "high" | "normal";
+  channel?: "public" | "operational";
 };
 
 let vapidConfigured = false;
@@ -137,6 +138,8 @@ export async function sendWebPush(
           priority:
             payload.priority ||
             "normal",
+
+          channel: payload.channel || "public",
 
           timestamp:
             Date.now(),

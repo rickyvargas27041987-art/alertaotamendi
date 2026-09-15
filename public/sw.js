@@ -60,6 +60,8 @@ self.addEventListener("push", (event) => {
     priority === "critical" ||
     priority === "high";
 
+  const operational = data.channel === "operational";
+
   const reportId =
     data.reportId ?? null;
 
@@ -148,8 +150,7 @@ self.addEventListener("push", (event) => {
            * Algunos navegadores pueden ignorarlo.
            */
           requireInteraction:
-            priority ===
-            "critical",
+            operational || priority === "critical",
 
           /*
            * Vibración intensa para alertas
@@ -158,7 +159,9 @@ self.addEventListener("push", (event) => {
            * Los dispositivos que no la soporten
            * simplemente la ignorarán.
            */
-          vibrate: important
+          vibrate: operational
+            ? [500, 150, 500, 150, 500, 150, 800, 200, 800]
+            : important
             ? [
                 300,
                 120,
@@ -179,6 +182,7 @@ self.addEventListener("push", (event) => {
             reportId,
 
             priority,
+            channel: data.channel || "public",
           },
         }
       ),

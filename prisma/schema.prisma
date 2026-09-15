@@ -245,22 +245,38 @@ model OperationalCodeConfig {
 }
 
 model OperationalSession {
-  id           Int                   @id @default(autoincrement())
-  configId     Int
-  tokenHash    String                @unique
-  officerName  String
-  agency       String
-  serviceType  String
-  revision     Int
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  lastAccessAt DateTime              @default(now())
-  createdAt    DateTime              @default(now())
-  config       OperationalCodeConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
-  auditLogs    OperationalAuditLog[]
+  id                Int                           @id @default(autoincrement())
+  configId          Int
+  tokenHash         String                        @unique
+  officerName       String
+  agency            String
+  serviceType       String
+  revision          Int
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  lastAccessAt      DateTime                      @default(now())
+  createdAt         DateTime                      @default(now())
+  config            OperationalCodeConfig         @relation(fields: [configId], references: [id], onDelete: Cascade)
+  auditLogs         OperationalAuditLog[]
+  pushSubscriptions OperationalPushSubscription[]
 
   @@index([configId, expiresAt])
   @@index([revokedAt])
+}
+
+// Dispositivos del personal operativo que aceptó recibir avisos dirigidos.
+model OperationalPushSubscription {
+  id        Int                @id @default(autoincrement())
+  sessionId Int
+  endpoint  String             @unique
+  p256dh    String
+  auth      String
+  enabled   Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  session   OperationalSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, enabled])
 }
 
 model OperationalAuditLog {
