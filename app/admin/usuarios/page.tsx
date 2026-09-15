@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import CustomPrices from "@/app/components/CustomPrices";
+import { priceLabel } from "@/lib/customPricing";
 
 type Zone = { province: string; district: string; locality: string | null };
 type User = {
@@ -20,6 +22,13 @@ type User = {
   subscriptionAutoRenew: boolean;
   mpStatus: string | null;
   mpLastPaymentAt: string | null;
+  customMonthlyCents: number | null;
+  customAnnualCents: number | null;
+  customCheckoutCents: number | null;
+  customCheckoutPlan: string | null;
+  customCheckoutState: string | null;
+  customCheckoutUrl: string | null;
+  mpPreapprovalId: string | null;
 };
 
 const planLabel: Record<string, string> = {
@@ -46,6 +55,7 @@ export default function UsuariosPage() {
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState("");
+  const [checkoutLink, setCheckoutLink] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [form, setForm] = useState({
     username: "",
@@ -107,30 +117,40 @@ export default function UsuariosPage() {
         body: JSON.stringify({ id, ...body }),
       });
       const d = await r.json();
-      if (!d.success) setError(d.error || "No se pudo actualizar.");
+      if (!d.success) { setError(d.error || "No se pudo actualizar."); return false; }
       await load();
+      return true;
+    } catch {
+      setError("Error de conexión. Actualizá para comprobar si el cambio se guardó.");
+      return false;
     } finally {
       setBusyId(null);
     }
   }
 
   async function createCheckout(u: User, plan: "MONTHLY" | "ANNUAL") {
+    const cents = plan === "MONTHLY" ? u.customMonthlyCents : u.customAnnualCents;
+    if (cents === null) { setError("Primero asigná y guardá el importe."); return; }
+    if (!window.confirm(`¿Generar enlace para ${u.name} por ${priceLabel(cents)} ${plan === "MONTHLY" ? "cada mes" : "cada 12 meses"}? El cliente deberá autorizar el cobro recurrente en Mercado Pago.`)) return;
+    setCheckoutLink("");
     setBusyId(u.id);
     setError("");
     try {
       const r = await fetch("/api/admin/subscriptions/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: u.id, plan }),
+        body: JSON.stringify({ userId: u.id, plan, confirmedCents: cents }),
       });
       const d = await r.json();
       if (!d.success) {
         setError(d.error || "No se pudo generar el enlace de Mercado Pago.");
         return;
       }
-      if (d.checkoutUrl) window.open(d.checkoutUrl, "_blank", "noopener,noreferrer");
+      if (d.checkoutUrl) setCheckoutLink(d.checkoutUrl);
       else setError("Mercado Pago creó la suscripción, pero no devolvió un enlace de pago.");
       await load();
+    } catch {
+      setError("No se pudo confirmar el resultado. Actualizá antes de intentar otro cobro.");
     } finally {
       setBusyId(null);
     }
@@ -165,6 +185,10 @@ export default function UsuariosPage() {
 
         {error && <div className="mt-4 rounded-2xl border border-red-800 bg-red-950/40 p-4 text-sm font-semibold text-red-200">{error}</div>}
 
+        {checkoutLink && <div className="mt-4 rounded-2xl border border-sky-800 bg-sky-950/40 p-4 text-sm">
+          Enlace listo. No se realizó un pago desde esta pantalla.
+          <a href={checkoutLink} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold text-sky-200 underline">Abrir Mercado Pago</a>
+        </div>}
         <div className="mt-6 grid gap-6 xl:grid-cols-[390px_1fr]">
           <form onSubmit={create} className="h-fit rounded-3xl border border-slate-800 bg-slate-900 p-5">
             <h2 className="text-xl font-black">Crear usuario</h2>
@@ -203,7 +227,7 @@ export default function UsuariosPage() {
               </select>
             </label>
             <button className="mt-5 w-full rounded-xl bg-red-600 p-3 font-black">Crear usuario</button>
-            <p className="mt-3 text-xs text-slate-500">Los administradores conservan acceso aunque una suscripción venza. Si dejás localidad vacía, el permiso cubre todo el partido/distrito.</p>
+            <p className="mt-3 text-xs text-slate-500">Después de crear el usuario, asigná sus importes con “Editar precios”. Los administradores conservan acceso aunque una suscripción venza. Si dejás localidad vacía, el permiso cubre todo el partido/distrito.</p>
           </form>
 
           <section className="space-y-4">
@@ -238,6 +262,11 @@ export default function UsuariosPage() {
                       <div>💳 Mercado Pago: {u.mpStatus || "No vinculado"}</div>
                     </div>
 
+                    {u.role !== "ADMIN" && <CustomPrices monthly={u.customMonthlyCents} annual={u.customAnnualCents} disabled={busyId === u.id} save={values => patch(u.id, values)} />}
+                    {u.customCheckoutCents !== null && <p className="mt-3 text-xs text-slate-400">Importe del último enlace solicitado: {priceLabel(u.customCheckoutCents)} · {u.customCheckoutPlan === "ANNUAL" ? "anual" : "mensual"}. No confirma un pago.</p>}
+                    {u.mpPreapprovalId && <p className="mt-2 text-xs text-amber-200">Contrato ya vinculado. Su importe vigente debe consultarse en Mercado Pago; editar estos precios no lo modifica.</p>}
+                    {u.customCheckoutState && !u.mpPreapprovalId && <p role="alert" className="mt-2 text-xs text-amber-200">Solicitud en proceso o pendiente de revisión. Verificá Mercado Pago antes de generar otra.</p>}
+                    {u.mpStatus === "pending" && u.customCheckoutUrl && <a href={u.customCheckoutUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs text-sky-200 underline">Abrir enlace pendiente existente</a>}
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button disabled={busyId === u.id} onClick={() => { const email = window.prompt("Email de facturación", u.billingEmail || ""); if (email !== null) patch(u.id, { billingEmail: email }); }} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200">✉️ Email</button>
                       <button disabled={busyId === u.id} onClick={() => patch(u.id, { subscriptionAction: "TRIAL_15" })} className="rounded-lg border border-sky-800 bg-sky-950/40 px-3 py-2 text-xs font-bold text-sky-200">15 días prueba</button>
@@ -248,8 +277,8 @@ export default function UsuariosPage() {
 
                     {u.role !== "ADMIN" && (
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-800 pt-3">
-                        <button disabled={busyId === u.id || !u.billingEmail} onClick={() => createCheckout(u, "MONTHLY")} className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-black disabled:opacity-40">💳 Cobrar mensual</button>
-                        <button disabled={busyId === u.id || !u.billingEmail} onClick={() => createCheckout(u, "ANNUAL")} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black disabled:opacity-40">💳 Cobrar anual</button>
+                        <button disabled={busyId === u.id || !u.billingEmail || !u.active || u.customMonthlyCents === null || !!u.mpPreapprovalId || !!u.customCheckoutState} onClick={() => createCheckout(u, "MONTHLY")} className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-black disabled:opacity-40">💳 Cobrar mensual</button>
+                        <button disabled={busyId === u.id || !u.billingEmail || !u.active || u.customAnnualCents === null || !!u.mpPreapprovalId || !!u.customCheckoutState} onClick={() => createCheckout(u, "ANNUAL")} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black disabled:opacity-40">💳 Cobrar anual</button>
                         <button disabled={busyId === u.id} onClick={() => patch(u.id, { subscriptionAction: u.subscriptionStatus === "SUSPENDED" ? "REACTIVATE" : "SUSPEND_SUBSCRIPTION" })} className="rounded-lg border border-red-800 px-3 py-2 text-xs font-bold text-red-300">{u.subscriptionStatus === "SUSPENDED" ? "Reactivar" : "Suspender suscripción"}</button>
                       </div>
                     )}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { audit, getMonitorActor, hashPassword } from "@/lib/monitorAuth";
 import { addDays, addMonths, normalizePlan, normalizeStatus } from "@/lib/subscription";
+import { parsePrice } from "@/lib/customPricing";
 
 async function requireAdmin() {
   const actor = await getMonitorActor();
@@ -91,6 +92,15 @@ export async function PATCH(request: Request) {
   if (!current) return NextResponse.json({ success: false, error: "Usuario no encontrado." }, { status: 404 });
 
   const data: any = {};
+  const changingPrices = "monthlyPrice" in body || "annualPrice" in body;
+  if (changingPrices) {
+    try {
+      if ("monthlyPrice" in body) data.customMonthlyCents = parsePrice(body.monthlyPrice);
+      if ("annualPrice" in body) data.customAnnualCents = parsePrice(body.annualPrice);
+    } catch (error) {
+      return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Importe inválido." }, { status: 400 });
+    }
+  }
   if (typeof body.active === "boolean") data.active = body.active;
   if (body.role === "ADMIN" || body.role === "OPERATOR") data.role = body.role;
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
@@ -139,6 +149,16 @@ export async function PATCH(request: Request) {
 
   const zones = Array.isArray(body.zones) ? body.zones : null;
   const user = await prisma.$transaction(async (tx) => {
+    if (changingPrices) {
+      await tx.auditLog.create({ data: {
+        userId: actor.id, actorName: actor.name, actorUsername: actor.username,
+        action: "CUSTOM_PRICES_UPDATED",
+        details: JSON.stringify({ userId: id, currency: "ARS", unit: "centavos",
+          before: { monthly: current.customMonthlyCents, annual: current.customAnnualCents },
+          after: { monthly: data.customMonthlyCents === undefined ? current.customMonthlyCents : data.customMonthlyCents,
+            annual: data.customAnnualCents === undefined ? current.customAnnualCents : data.customAnnualCents } }),
+      } });
+    }
     const updated = await tx.monitoringUser.update({ where: { id }, data });
     if (zones) {
       await tx.userZone.deleteMany({ where: { userId: id } });
@@ -156,5 +176,7 @@ export async function PATCH(request: Request) {
   });
 
   await audit(actor, "USER_UPDATED", `Usuario #${id}: ${JSON.stringify({ active: body.active, role: body.role, subscriptionAction: action || undefined, plan: body.subscriptionPlan, zonesChanged: !!zones })}`);
-  return NextResponse.json({ success: true, user });
+  // Nunca devolver el hash de contraseña en la respuesta de actualización.
+  const safe = user ? Object.fromEntries(Object.entries(user).filter(([key]) => key !== "passwordHash")) : null;
+  return NextResponse.json({ success: true, user: safe });
 }

@@ -192,6 +192,12 @@ model MonitoringUser {
 
   // SUSCRIPCIÓN / ACCESO COMERCIAL AL CENTRO DE MONITOREO
   billingEmail          String?
+  customMonthlyCents    Int?
+  customAnnualCents     Int?
+  customCheckoutState   String?
+  customCheckoutCents   Int?
+  customCheckoutPlan    String?
+  customCheckoutUrl     String?
   subscriptionPlan      String    @default("COURTESY")
   subscriptionStatus    String    @default("ACTIVE")
   subscriptionStartedAt DateTime?
