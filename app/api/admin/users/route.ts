@@ -104,7 +104,12 @@ export async function PATCH(request: Request) {
     }
   }
   if (typeof body.active === "boolean") data.active = body.active;
-  if (["ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)) data.role = body.role;
+  if ("role" in body) {
+    if (!["ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)) {
+      return NextResponse.json({ success: false, error: "Rol inválido." }, { status: 400 });
+    }
+    data.role = body.role;
+  }
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
   if (typeof body.password === "string" && body.password.length >= 8) data.passwordHash = hashPassword(body.password);
   if (typeof body.billingEmail === "string") data.billingEmail = body.billingEmail.trim().toLowerCase() || null;
@@ -149,7 +154,23 @@ export async function PATCH(request: Request) {
     if (current.subscriptionPlan === "ANNUAL" && !current.subscriptionEndsAt) data.subscriptionEndsAt = addMonths(now, 12);
   }
 
-  const zones = Array.isArray(body.zones) ? body.zones : null;
+  const hasZonesUpdate = Object.prototype.hasOwnProperty.call(body, "zones");
+  if (hasZonesUpdate && !Array.isArray(body.zones)) {
+    return NextResponse.json({ success: false, error: "La jurisdicción es inválida." }, { status: 400 });
+  }
+  const zones = Array.isArray(body.zones)
+    ? body.zones
+        .filter((z: any) => z?.province && z?.district)
+        .map((z: any) => ({
+          userId: id,
+          province: String(z.province).trim(),
+          district: String(z.district).trim(),
+          locality: z.locality ? String(z.locality).trim() : null,
+        }))
+    : null;
+  if (hasZonesUpdate && (!zones || zones.length === 0)) {
+    return NextResponse.json({ success: false, error: "Asigná al menos una jurisdicción completa." }, { status: 400 });
+  }
   const user = await prisma.$transaction(async (tx) => {
     if (changingPrices) {
       await tx.auditLog.create({ data: {
@@ -164,20 +185,14 @@ export async function PATCH(request: Request) {
     const updated = await tx.monitoringUser.update({ where: { id }, data });
     if (zones) {
       await tx.userZone.deleteMany({ where: { userId: id } });
-      if (zones.length) {
-        await tx.userZone.createMany({
-          data: zones
-            .filter((z: any) => z?.province && z?.district)
-            .map((z: any) => ({ userId: id, province: String(z.province).trim(), district: String(z.district).trim(), locality: z.locality ? String(z.locality).trim() : null })),
-        });
-      }
+      await tx.userZone.createMany({ data: zones });
     }
     const mustCloseSessions = body.active === false || action === "SUSPEND_SUBSCRIPTION";
     if (mustCloseSessions) await tx.monitorSession.deleteMany({ where: { userId: id } });
     return tx.monitoringUser.findUnique({ where: { id }, include: { zones: true } });
   });
 
-  await audit(actor, "USER_UPDATED", `Usuario #${id}: ${JSON.stringify({ active: body.active, role: body.role, subscriptionAction: action || undefined, plan: body.subscriptionPlan, zonesChanged: !!zones })}`);
+  await audit(actor, "USER_UPDATED", `Usuario #${id}: ${JSON.stringify({ active: body.active, role: body.role, subscriptionAction: action || undefined, plan: body.subscriptionPlan, zonesChanged: hasZonesUpdate })}`);
   // Nunca devolver el hash de contraseña en la respuesta de actualización.
   const safe = user ? Object.fromEntries(Object.entries(user).filter(([key]) => key !== "passwordHash")) : null;
   return NextResponse.json({ success: true, user: safe });

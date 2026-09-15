@@ -1534,11 +1534,11 @@ export default function MapaAlertasLeaflet({
                 key={boundary.key}
                 data={boundary.data}
                 style={{
-                  color: "#38bdf8",
-                  weight: 2,
-                  opacity: 0.48,
-                  fillColor: "#38bdf8",
-                  fillOpacity: 0.025,
+                  color: "#ef4444",
+                  weight: 2.5,
+                  opacity: 0.72,
+                  fillColor: "#ef4444",
+                  fillOpacity: 0.03,
                   dashArray: "8 8",
                 }}
               >

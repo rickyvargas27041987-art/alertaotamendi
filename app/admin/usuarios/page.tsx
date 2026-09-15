@@ -58,6 +58,157 @@ function statusClass(status: string) {
   return "bg-red-500/10 text-red-300 border-red-500/30";
 }
 
+type AccessScope = "DISTRICT" | "LOCALITY";
+
+function UserAccessEditor({
+  user,
+  provinces,
+  disabled,
+  save,
+}: {
+  user: User;
+  provinces: Province[];
+  disabled: boolean;
+  save: (body: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [role, setRole] = useState(user.role);
+  const [provinceId, setProvinceId] = useState("");
+  const [scope, setScope] = useState<AccessScope>(user.zones[0]?.locality ? "LOCALITY" : "DISTRICT");
+  const [district, setDistrict] = useState(user.zones[0]?.district ?? "");
+  const [locality, setLocality] = useState(user.zones[0]?.locality ?? "");
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [localities, setLocalities] = useState<LocalityOption[]>([]);
+  const [localError, setLocalError] = useState("");
+
+  function openEditor() {
+    const zone = user.zones[0];
+    const matchingProvince = provinces.find((province) => province.nombre === zone?.province);
+    setRole(user.role);
+    setProvinceId(matchingProvince?.id ?? "");
+    setScope(zone?.locality ? "LOCALITY" : "DISTRICT");
+    setDistrict(zone?.district ?? "");
+    setLocality(zone?.locality ?? "");
+    setLocalError("");
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open || !provinceId) return;
+    fetch(`/api/admin/jurisdictions?provinceId=${encodeURIComponent(provinceId)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) setDistricts(data.districts ?? []);
+        else setLocalError(data.error || "No se pudieron cargar los partidos o departamentos.");
+      })
+      .catch(() => setLocalError("No se pudieron cargar los partidos o departamentos."));
+  }, [open, provinceId]);
+
+  useEffect(() => {
+    if (!open || scope !== "LOCALITY" || !provinceId || !district) return;
+    fetch(`/api/admin/jurisdictions?provinceId=${encodeURIComponent(provinceId)}&district=${encodeURIComponent(district)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) setLocalities(data.localities ?? []);
+        else setLocalError(data.error || "No se pudieron cargar las localidades.");
+      })
+      .catch(() => setLocalError("No se pudieron cargar las localidades."));
+  }, [district, open, provinceId, scope]);
+
+  async function submit() {
+    const province = provinces.find((item) => item.id === provinceId)?.nombre ?? "";
+    if (!province || !district || (scope === "LOCALITY" && !locality)) {
+      setLocalError("Elegí una provincia, el partido/departamento y, si corresponde, la localidad.");
+      return;
+    }
+    setLocalError("");
+    const saved = await save({
+      role,
+      zones: [{ province, district, locality: scope === "LOCALITY" ? locality : null }],
+    });
+    if (saved) setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={openEditor}
+        className="rounded-xl border border-amber-700/70 bg-amber-950/30 px-4 py-2 text-sm font-bold text-amber-200 disabled:opacity-50"
+      >
+        ✏️ Editar rol y jurisdicción
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-amber-700/60 bg-slate-950/80 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-black text-amber-200">Editar acceso</p>
+          <p className="text-xs text-slate-400">Los cambios se aplicarán en el próximo acceso de esta cuenta.</p>
+        </div>
+        <button type="button" onClick={() => setOpen(false)} className="text-sm font-bold text-slate-400">Cerrar</button>
+      </div>
+
+      {localError && <div className="mt-3 rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">{localError}</div>}
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-sm text-slate-300">Rol
+          <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
+            <option value="OPERATOR">Operador</option>
+            <option value="INSTITUTIONAL">Consulta institucional (civil)</option>
+            <option value="ADMIN">Administrador</option>
+          </select>
+        </label>
+        <label className="text-sm text-slate-300">Provincia
+          <select
+            value={provinceId}
+            onChange={(event) => { setProvinceId(event.target.value); setDistrict(""); setLocality(""); }}
+            className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3"
+          >
+            <option value="">Seleccionar provincia</option>
+            {provinces.map((province) => <option key={province.id} value={province.id}>{province.nombre}</option>)}
+          </select>
+        </label>
+        <label className="text-sm text-slate-300">Alcance territorial
+          <select
+            value={scope}
+            onChange={(event) => { const value = event.target.value as AccessScope; setScope(value); if (value === "DISTRICT") setLocality(""); }}
+            className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3"
+          >
+            <option value="DISTRICT">Partido / departamento completo</option>
+            <option value="LOCALITY">Una localidad específica</option>
+          </select>
+        </label>
+        <label className="text-sm text-slate-300">Partido / departamento
+          <select
+            value={district}
+            onChange={(event) => { setDistrict(event.target.value); setLocality(""); }}
+            className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3"
+            disabled={!provinceId}
+          >
+            <option value="">Seleccionar</option>
+            {districts.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </label>
+        {scope === "LOCALITY" && <label className="text-sm text-slate-300 sm:col-span-2">Localidad
+          <select value={locality} onChange={(event) => setLocality(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" disabled={!district}>
+            <option value="">Seleccionar localidad</option>
+            {localities.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+          </select>
+        </label>}
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300">Cancelar</button>
+        <button type="button" disabled={disabled} onClick={submit} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Guardar acceso</button>
+      </div>
+    </div>
+  );
+}
+
 export default function UsuariosPage() {
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
@@ -355,7 +506,10 @@ export default function UsuariosPage() {
                 </div>
 
                 <div className="mt-3 flex justify-end">
-                  <button disabled={busyId === u.id} onClick={() => patch(u.id, { active: !u.active })} className={`rounded-xl px-4 py-2 text-sm font-bold ${u.active ? "bg-red-950 text-red-300" : "bg-emerald-950 text-emerald-300"}`}>{u.active ? "Suspender cuenta" : "Activar cuenta"}</button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <UserAccessEditor user={u} provinces={provinces} disabled={busyId === u.id} save={(body) => patch(u.id, body)} />
+                    <button disabled={busyId === u.id} onClick={() => patch(u.id, { active: !u.active })} className={`rounded-xl px-4 py-2 text-sm font-bold ${u.active ? "bg-red-950 text-red-300" : "bg-emerald-950 text-emerald-300"}`}>{u.active ? "Suspender cuenta" : "Activar cuenta"}</button>
+                  </div>
                 </div>
               </article>
             ))}
