@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { audit, canOperateReport, getMonitorActor } from "@/lib/monitorAuth";
+import { audit, canOperateReport, canViewReport, getMonitorActor } from "@/lib/monitorAuth";
+import { notifyOperationalResponders } from "@/lib/operationalNotifications";
 import {
   calcularDistanciaKm,
   sendWebPush,
@@ -81,6 +82,14 @@ function roundPublicCoordinate(
    * El administrador conserva la ubicación exacta.
    */
   return Math.round(value * 1000) / 1000;
+}
+
+function roundInstitutionalCoordinate(value: number | null) {
+  if (value === null) return null;
+
+  // La vista civil agrupa puntos en una grilla de aproximadamente 2 km.
+  // De esta forma la coordenada original nunca sale del servidor.
+  return Math.round(value * 50) / 50;
 }
 
 /* =========================================================
@@ -576,7 +585,28 @@ export async function GET() {
       // El administrador conserva la visión nacional.
       const reports = actor.role === "ADMIN"
         ? allReports
-        : allReports.filter((report) => canOperateReport(actor, report));
+        : allReports.filter((report) => canViewReport(actor, report));
+
+      if (actor.role === "INSTITUTIONAL") {
+        const institutionalReports = reports.map((report) => ({
+          id: report.id,
+          category: report.category,
+          status: report.status,
+          latitude: roundInstitutionalCoordinate(report.latitude),
+          longitude: roundInstitutionalCoordinate(report.longitude),
+          createdAt: report.createdAt,
+          updatedAt: report.updatedAt,
+          acknowledgedAt: report.acknowledgedAt,
+          resolvedAt: report.resolvedAt,
+          province: report.province,
+          district: report.district,
+          locality: report.locality,
+          aiPriority: report.aiPriority,
+          aiCategory: report.aiCategory,
+          institutionalView: true,
+        }));
+        return NextResponse.json({ success: true, total: institutionalReports.length, reports: institutionalReports });
+      }
 
       return NextResponse.json(
         {
@@ -875,6 +905,9 @@ export async function POST(
     } else {
       await evaluateSuspiciousPattern(newReport);
     }
+
+    // Aviso dirigido por servicio y jurisdicción al personal operativo habilitado.
+    await notifyOperationalResponders(newReport);
 
     return NextResponse.json(
       {

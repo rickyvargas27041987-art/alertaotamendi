@@ -6,6 +6,8 @@ import CustomPrices from "@/app/components/CustomPrices";
 import { priceLabel } from "@/lib/customPricing";
 
 type Zone = { province: string; district: string; locality: string | null };
+type Province = { id: string; nombre: string };
+type LocalityOption = { id: string; name: string };
 type User = {
   id: number;
   username: string;
@@ -44,6 +46,11 @@ const statusLabel: Record<string, string> = {
   SUSPENDED: "Suspendida",
   CANCELED: "Cancelada",
 };
+const roleLabel: Record<string, string> = {
+  ADMIN: "Administrador",
+  OPERATOR: "Operador",
+  INSTITUTIONAL: "Consulta institucional",
+};
 
 function statusClass(status: string) {
   if (status === "ACTIVE") return "bg-emerald-500/10 text-emerald-300 border-emerald-500/30";
@@ -57,6 +64,11 @@ export default function UsuariosPage() {
   const [error, setError] = useState("");
   const [checkoutLink, setCheckoutLink] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [provinces, setProvinces] = useState<Province[]>([]);
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [localities, setLocalities] = useState<LocalityOption[]>([]);
+  const [provinceId, setProvinceId] = useState("06");
+  const [scope, setScope] = useState<"DISTRICT" | "LOCALITY">("DISTRICT");
   const [form, setForm] = useState({
     username: "",
     name: "",
@@ -89,10 +101,45 @@ export default function UsuariosPage() {
     load();
   }, []);
 
+  useEffect(() => {
+    fetch("/api/admin/jurisdictions", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => { if (data.success) setProvinces(data.provinces ?? []); })
+      .catch(() => setError("No se pudo cargar el listado de provincias."));
+  }, []);
+
+  useEffect(() => {
+    if (!provinceId) return;
+    fetch(`/api/admin/jurisdictions?provinceId=${encodeURIComponent(provinceId)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!data.success) return;
+        setDistricts(data.districts ?? []);
+        setForm((current) => ({ ...current, province: data.province.nombre, district: "", locality: "" }));
+      })
+      .catch(() => setError("No se pudo cargar el listado de partidos o departamentos."));
+  }, [provinceId]);
+
+  useEffect(() => {
+    if (scope !== "LOCALITY" || !form.district) {
+      setLocalities([]);
+      setForm((current) => current.locality ? { ...current, locality: "" } : current);
+      return;
+    }
+    fetch(`/api/admin/jurisdictions?provinceId=${encodeURIComponent(provinceId)}&district=${encodeURIComponent(form.district)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => { if (data.success) setLocalities(data.localities ?? []); })
+      .catch(() => setError("No se pudo cargar el listado de localidades."));
+  }, [form.district, provinceId, scope]);
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const zones = form.district ? [{ province: form.province, district: form.district, locality: form.locality || null }] : [];
+    if (!form.district || (scope === "LOCALITY" && !form.locality)) {
+      setError("Elegí el partido/departamento y, si corresponde, la localidad.");
+      return;
+    }
+    const zones = [{ province: form.province, district: form.district, locality: scope === "LOCALITY" ? form.locality : null }];
     const r = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,9 +244,6 @@ export default function UsuariosPage() {
               ["username", "Usuario"],
               ["password", "Contraseña (mín. 8)"],
               ["billingEmail", "Email de facturación"],
-              ["province", "Provincia"],
-              ["district", "Partido / distrito"],
-              ["locality", "Localidad (opcional)"],
             ].map(([k, l]) => (
               <label key={k} className="mt-4 block text-sm text-slate-300">
                 {l}
@@ -212,9 +256,34 @@ export default function UsuariosPage() {
                 />
               </label>
             ))}
+            <label className="mt-4 block text-sm text-slate-300">Provincia
+              <select value={provinceId} onChange={(e) => setProvinceId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" required>
+                <option value="">Seleccionar provincia</option>
+                {provinces.map((province) => <option key={province.id} value={province.id}>{province.nombre}</option>)}
+              </select>
+            </label>
+            <label className="mt-4 block text-sm text-slate-300">Alcance territorial
+              <select value={scope} onChange={(e) => setScope(e.target.value as "DISTRICT" | "LOCALITY")} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
+                <option value="DISTRICT">Partido / departamento completo</option>
+                <option value="LOCALITY">Una localidad específica</option>
+              </select>
+            </label>
+            <label className="mt-4 block text-sm text-slate-300">{form.province === "Buenos Aires" ? "Partido" : "Departamento / municipio"}
+              <select value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value, locality: "" })} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" required>
+                <option value="">Seleccionar</option>
+                {districts.map((district) => <option key={district} value={district}>{district}</option>)}
+              </select>
+            </label>
+            {scope === "LOCALITY" && <label className="mt-4 block text-sm text-slate-300">Localidad
+              <select value={form.locality} onChange={(e) => setForm({ ...form, locality: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" required disabled={!form.district}>
+                <option value="">Seleccionar localidad</option>
+                {localities.map((locality) => <option key={locality.id} value={locality.name}>{locality.name}</option>)}
+              </select>
+            </label>}
             <label className="mt-4 block text-sm">Rol
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
                 <option value="OPERATOR">Operador</option>
+                <option value="INSTITUTIONAL">Consulta institucional (civil)</option>
                 <option value="ADMIN">Administrador</option>
               </select>
             </label>
@@ -227,7 +296,7 @@ export default function UsuariosPage() {
               </select>
             </label>
             <button className="mt-5 w-full rounded-xl bg-red-600 p-3 font-black">Crear usuario</button>
-            <p className="mt-3 text-xs text-slate-500">Después de crear el usuario, asigná sus importes con “Editar precios”. Los administradores conservan acceso aunque una suscripción venza. Si dejás localidad vacía, el permiso cubre todo el partido/distrito.</p>
+            <p className="mt-3 text-xs leading-5 text-slate-500">“Partido completo” incluye todas sus localidades. El perfil institucional solo recibe mapa aproximado, actividad y estadísticas: no recibe direcciones exactas, descripción, evidencia, responsables ni controles operativos.</p>
           </form>
 
           <section className="space-y-4">
@@ -237,12 +306,12 @@ export default function UsuariosPage() {
                   <div className="min-w-[250px] flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-black">{u.name}</h3>
-                      <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">{u.role}</span>
+                      <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">{roleLabel[u.role] || u.role}</span>
                       <span className={u.active ? "text-emerald-400" : "text-red-400"}>{u.active ? "● Cuenta activa" : "● Cuenta suspendida"}</span>
                     </div>
                     <p className="text-sm text-slate-400">@{u.username}</p>
                     <div className="mt-2 text-sm text-slate-300">
-                      {u.zones.length ? u.zones.map((z, i) => <div key={i}>📍 {z.locality ? `${z.locality} · ` : ""}{z.district} · {z.province}</div>) : <div>🌐 Sin zonas asignadas</div>}
+                      {u.zones.length ? u.zones.map((z, i) => <div key={i}>📍 {z.locality ? `${z.locality} · ` : `Todo ${z.district} · `}{z.locality ? z.district : ""}{z.locality ? " · " : ""}{z.province}</div>) : <div>🌐 Sin zonas asignadas</div>}
                     </div>
                     <p className="mt-2 text-xs text-slate-500">Último acceso: {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("es-AR") : "Nunca"}</p>
                   </div>

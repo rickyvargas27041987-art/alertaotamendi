@@ -10,6 +10,7 @@ import {
 
 import {
   Circle,
+  GeoJSON,
   MapContainer,
   Marker,
   Popup,
@@ -22,6 +23,7 @@ import L from "leaflet";
 import type {
   LatLngBoundsExpression,
 } from "leaflet";
+import type { GeoJsonObject } from "geojson";
 
 import "leaflet/dist/leaflet.css";
 
@@ -74,6 +76,13 @@ type Props = {
   kioskMode?: boolean;
   onOpenHistory?: () => void;
   hotZoneMode?: boolean;
+  privacyMode?: boolean;
+};
+
+type JurisdictionBoundary = {
+  type: "Feature";
+  properties: { province: string; district: string; label?: string };
+  geometry: { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 };
 
 type UserPosition = {
@@ -636,6 +645,7 @@ export default function MapaAlertasLeaflet({
   kioskMode = false,
   onOpenHistory,
   hotZoneMode = false,
+  privacyMode = false,
 }: Props) {
   const [filtro, setFiltro] =
     useState("Todos");
@@ -663,6 +673,7 @@ export default function MapaAlertasLeaflet({
     useState(false);
 
   const [preventiveAlerts, setPreventiveAlerts] = useState<PreventiveAlert[]>([]);
+  const [jurisdictionBoundaries, setJurisdictionBoundaries] = useState<Array<{ key: string; label: string; data: GeoJsonObject }>>([]);
 
   const [
     locationMessage,
@@ -703,8 +714,25 @@ export default function MapaAlertasLeaflet({
       }
     }
 
+    const boundary = jurisdictionBoundaries.find((item) => item.key === `${zone.province}|${zone.district}`);
+    if (boundary) {
+      const leafletBounds = L.geoJSON(boundary.data).getBounds();
+      if (leafletBounds.isValid()) {
+        const center = leafletBounds.getCenter();
+        return {
+          latitude: center.lat,
+          longitude: center.lng,
+          label: `Partido / departamento de ${zone.district}`,
+          bounds: [
+            [leafletBounds.getSouth(), leafletBounds.getWest()],
+            [leafletBounds.getNorth(), leafletBounds.getEast()],
+          ],
+        };
+      }
+    }
+
     return { latitude: OTAMENDI_CENTER[0], longitude: OTAMENDI_CENTER[1], label: zone.district || "Mi jurisdicción" };
-  }, [monitorZones]);
+  }, [monitorZones, jurisdictionBoundaries]);
 
   const mountedRef =
     useRef(true);
@@ -878,6 +906,28 @@ export default function MapaAlertasLeaflet({
   // Cargamos solamente alertas preventivas ya generadas (3+).
   // El monitoreo usa el endpoint privado; la app pública recibe solo datos seguros.
   useEffect(() => {
+    if (mode !== "admin" || !monitorZones.length) {
+      setJurisdictionBoundaries([]);
+      return;
+    }
+    let cancelled = false;
+    const uniqueZones = Array.from(new Map(monitorZones.map((zone) => [`${zone.province}|${zone.district}`, zone])).values());
+    Promise.all(uniqueZones.map(async (zone) => {
+      const params = new URLSearchParams({ province: zone.province, district: zone.district });
+      const response = await fetch(`/api/admin/jurisdiction-boundary?${params}`, { cache: "no-store" });
+      const data = await response.json();
+      return response.ok && data.success ? { key: `${zone.province}|${zone.district}`, label: zone.district, data: data.boundary as GeoJsonObject } : null;
+    })).then((items) => {
+      if (!cancelled) setJurisdictionBoundaries(items.filter((item): item is NonNullable<typeof item> => Boolean(item)));
+    }).catch((error) => console.warn("No se pudieron cargar los límites de jurisdicción:", error));
+    return () => { cancelled = true; };
+  }, [mode, monitorZones]);
+
+  useEffect(() => {
+    if (privacyMode) {
+      setPreventiveAlerts([]);
+      return;
+    }
     let cancelled = false;
     const load = async () => {
       try {
@@ -894,7 +944,7 @@ export default function MapaAlertasLeaflet({
     void load();
     const interval = window.setInterval(() => void load(), mode === "admin" ? 3000 : 12000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [mode]);
+  }, [mode, privacyMode]);
 
   /* =======================================================
      REPORTES FILTRADOS
@@ -1479,6 +1529,28 @@ export default function MapaAlertasLeaflet({
                 </>
               )}
 
+            {jurisdictionBoundaries.map((boundary) => (
+              <GeoJSON
+                key={boundary.key}
+                data={boundary.data}
+                style={{
+                  color: "#38bdf8",
+                  weight: 2,
+                  opacity: 0.48,
+                  fillColor: "#38bdf8",
+                  fillOpacity: 0.025,
+                  dashArray: "8 8",
+                }}
+              >
+                <Popup>
+                  <strong>Jurisdicción: {boundary.label}</strong>
+                  <div style={{ marginTop: 5, fontSize: 12, color: "#64748b" }}>
+                    Límite territorial de referencia.
+                  </div>
+                </Popup>
+              </GeoJSON>
+            ))}
+
             {hotZoneMode && hotZones.map((zone) => {
               const radius = Math.min(850, 220 + zone.count * 70);
               const fillOpacity = Math.min(0.42, 0.10 + zone.count * 0.035);
@@ -1738,14 +1810,9 @@ export default function MapaAlertasLeaflet({
                                   "#64748b",
                               }}
                             >
-                              📍{" "}
-                              {report.latitude?.toFixed(
-                                5
-                              )}
-                              ,{" "}
-                              {report.longitude?.toFixed(
-                                5
-                              )}
+                              {privacyMode
+                                ? "📍 Sector aproximado · ubicación exacta protegida"
+                                : `📍 ${report.latitude?.toFixed(5)}, ${report.longitude?.toFixed(5)}`}
                             </div>
 
                             {onSelectReport && (

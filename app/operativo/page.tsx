@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+
+type PushAlert = { title: string; body: string; reportId?: number | null; channel?: string };
+
+function vapidKey(value: string) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const raw = window.atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+}
 
 type OperationalSession = {
   officerName: string;
@@ -63,12 +71,22 @@ export default function OperationalPage() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Report | null>(null);
   const [address, setAddress] = useState("");
+  const [pushState, setPushState] = useState<"idle" | "enabling" | "enabled" | "blocked">("idle");
+  const [incomingAlert, setIncomingAlert] = useState<PushAlert | null>(null);
+  const requestedReportRef = useRef<number | null>(null);
 
   const loadReports = useCallback(async () => {
     const response = await fetch("/api/operational/reports", { cache: "no-store" });
     const data = await response.json();
     if (!response.ok || !data.success) throw new Error(data.error || "No se pudieron cargar las alertas.");
-    setReports(data.reports || []);
+    const incoming: Report[] = data.reports || [];
+    setReports(incoming);
+    const requestedId = Number(new URLSearchParams(window.location.search).get("report"));
+    if (Number.isInteger(requestedId) && requestedId > 0 && requestedReportRef.current !== requestedId) {
+      requestedReportRef.current = requestedId;
+      const requested = incoming.find((report) => report.id === requestedId);
+      if (requested) void openReport(requested);
+    }
   }, []);
 
   const checkSession = useCallback(async () => {
@@ -99,6 +117,77 @@ export default function OperationalPage() {
     return () => window.clearInterval(interval);
   }, [session, loadReports]);
 
+  useEffect(() => {
+    if (!session || !("serviceWorker" in navigator)) return;
+    fetch("/api/operational/push", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => { if (data.success && data.enabled) setPushState("enabled"); })
+      .catch(() => undefined);
+
+    const receive = (event: MessageEvent) => {
+      const message = event.data;
+      if (message?.type !== "PUSH_ALERT" || message.payload?.channel !== "operational") return;
+      const payload = message.payload as PushAlert;
+      setIncomingAlert(payload);
+      void loadReports().catch(() => undefined);
+      navigator.vibrate?.([500, 150, 500, 150, 800]);
+      try {
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioContextClass) {
+          const context = new AudioContextClass();
+          for (let index = 0; index < 12; index += 1) {
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            oscillator.connect(gain);
+            gain.connect(context.destination);
+            oscillator.type = "square";
+            oscillator.frequency.value = index % 2 ? 980 : 760;
+            const start = context.currentTime + index * 0.5;
+            gain.gain.setValueAtTime(0.13, start);
+            gain.gain.exponentialRampToValueAtTime(0.01, start + 0.32);
+            oscillator.start(start);
+            oscillator.stop(start + 0.33);
+          }
+          window.setTimeout(() => void context.close(), 7000);
+        }
+      } catch {
+        // El sistema operativo mantiene la notificación y vibración si bloquea el audio web.
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", receive);
+    return () => navigator.serviceWorker.removeEventListener("message", receive);
+  }, [session, loadReports]);
+
+  async function enableOperationalAlerts() {
+    setPushState("enabling");
+    setError("");
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador no admite avisos push.");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushState("blocked");
+        throw new Error("Los avisos están bloqueados. Habilitalos en los permisos del navegador.");
+      }
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicKey) throw new Error("Falta configurar la clave pública de notificaciones.");
+      await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey(publicKey) });
+      const json = subscription.toJSON();
+      const response = await fetch("/api/operational/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: subscription.endpoint, p256dh: json.keys?.p256dh, auth: json.keys?.auth }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "No se pudieron activar los avisos.");
+      setPushState("enabled");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron activar los avisos.");
+      setPushState((current) => current === "blocked" ? "blocked" : "idle");
+    }
+  }
+
   async function login(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -121,6 +210,7 @@ export default function OperationalPage() {
   }
 
   async function logout() {
+    await fetch("/api/operational/push", { method: "DELETE" }).catch(() => undefined);
     await fetch("/api/operational/session", { method: "DELETE" });
     setSession(null);
     setReports([]);
@@ -204,6 +294,10 @@ export default function OperationalPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      {incomingAlert && <div className="fixed inset-x-3 top-3 z-[200000] mx-auto max-w-lg animate-pulse rounded-3xl border-2 border-red-400 bg-red-950 p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-widest text-red-300">🚨 Aviso operativo urgente</p><h2 className="mt-2 text-xl font-black">{incomingAlert.title}</h2><p className="mt-2 text-sm text-red-100">{incomingAlert.body}</p></div><button type="button" onClick={() => setIncomingAlert(null)} className="rounded-full bg-black/25 px-3 py-2">✕</button></div>
+        <button type="button" onClick={() => { const report = reports.find((item) => item.id === incomingAlert.reportId); if (report) void openReport(report); setIncomingAlert(null); }} className="mt-4 w-full rounded-2xl bg-white py-3 font-black text-red-950">Abrir informe</button>
+      </div>}
       <div className="mx-auto w-full max-w-3xl px-4 py-4">
         <header className="sticky top-0 z-20 rounded-3xl border border-slate-800 bg-slate-950/95 p-4 shadow-xl backdrop-blur">
           <div className="flex items-start justify-between gap-3">
@@ -215,6 +309,13 @@ export default function OperationalPage() {
             <button type="button" onClick={() => void logout()} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold">Salir</button>
           </div>
         </header>
+
+        <section className={`mt-4 rounded-2xl border p-4 ${pushState === "enabled" ? "border-emerald-700 bg-emerald-950/20" : "border-amber-700 bg-amber-950/20"}`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-black">{pushState === "enabled" ? "🔔 Avisos operativos activados" : "🔕 Activá los avisos urgentes"}</p><p className="mt-1 text-xs leading-5 text-slate-400">Recibirás las alertas de tu servicio correspondientes a esta jurisdicción.</p></div>
+            {pushState !== "enabled" && <button type="button" onClick={() => void enableOperationalAlerts()} disabled={pushState === "enabling"} className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{pushState === "enabling" ? "Activando…" : "Activar avisos"}</button>}
+          </div>
+        </section>
 
         <section className="mt-4 flex items-center justify-between gap-3">
           <div><h2 className="text-2xl font-black">Alertas activas</h2><p className="text-sm text-slate-500">Actualización automática cada 30 segundos</p></div>

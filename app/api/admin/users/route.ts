@@ -23,7 +23,9 @@ export async function POST(request: Request) {
   const username = String(body.username ?? "").trim().toLowerCase();
   const name = String(body.name ?? "").trim();
   const password = String(body.password ?? "");
-  const role = body.role === "ADMIN" ? "ADMIN" : "OPERATOR";
+  const role = ["ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)
+    ? String(body.role)
+    : "OPERATOR";
   const zones = Array.isArray(body.zones) ? body.zones : [];
   const billingEmail = String(body.billingEmail ?? "").trim().toLowerCase() || null;
   const plan = normalizePlan(body.subscriptionPlan);
@@ -102,7 +104,7 @@ export async function PATCH(request: Request) {
     }
   }
   if (typeof body.active === "boolean") data.active = body.active;
-  if (body.role === "ADMIN" || body.role === "OPERATOR") data.role = body.role;
+  if (["ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)) data.role = body.role;
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
   if (typeof body.password === "string" && body.password.length >= 8) data.passwordHash = hashPassword(body.password);
   if (typeof body.billingEmail === "string") data.billingEmail = body.billingEmail.trim().toLowerCase() || null;

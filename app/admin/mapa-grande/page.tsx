@@ -35,6 +35,7 @@ export default function MapaGrandePage() {
   const router = useRouter();
   const [reports, setReports] = useState<Report[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [role, setRole] = useState("");
   const [ready, setReady] = useState(false);
   const [now, setNow] = useState(new Date());
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
@@ -51,16 +52,19 @@ export default function MapaGrandePage() {
 
     focusKeyRef.current += 1;
     setFocusTarget({ latitude: report.latitude, longitude: report.longitude, radiusMeters: 1000, key: focusKeyRef.current });
-    setAlertCard({ report, priority, address: "Obteniendo dirección…", area: "" });
+    const institutional = role === "INSTITUTIONAL";
+    setAlertCard({ report, priority, address: institutional ? "Sector aproximado" : "Obteniendo dirección…", area: institutional ? "La ubicación exacta está protegida." : "" });
 
-    try {
-      const response = await fetch(`/api/reverse-geocode?lat=${encodeURIComponent(report.latitude)}&lon=${encodeURIComponent(report.longitude)}`, { cache: "no-store" });
-      const data = await response.json();
-      if (data?.success) {
-        setAlertCard((current) => current?.report.id === report.id ? { ...current, address: data.address || "Ubicación identificada", area: data.area || "" } : current);
+    if (!institutional) {
+      try {
+        const response = await fetch(`/api/reverse-geocode?lat=${encodeURIComponent(report.latitude)}&lon=${encodeURIComponent(report.longitude)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (data?.success) {
+          setAlertCard((current) => current?.report.id === report.id ? { ...current, address: data.address || "Ubicación identificada", area: data.area || "" } : current);
+        }
+      } catch (error) {
+        console.warn("No se pudo resolver la dirección de la alerta:", error);
       }
-    } catch (error) {
-      console.warn("No se pudo resolver la dirección de la alerta:", error);
     }
 
     if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current);
@@ -70,7 +74,7 @@ export default function MapaGrandePage() {
       // Cambiar la key al quitar el foco hace que el mapa vuelva a su vista operativa habitual.
       setFocusTarget(null);
     }, 30000);
-  }, []);
+  }, [role]);
 
   const load = useCallback(async () => {
     try {
@@ -103,12 +107,13 @@ export default function MapaGrandePage() {
   useEffect(() => {
     fetch("/api/admin/me", { cache: "no-store" })
       .then(async (r) => { if (!r.ok) throw new Error("unauthorized"); return r.json(); })
-      .then((d) => { if (!d.success) throw new Error("unauthorized"); setZones(d.user?.zones ?? []); setReady(true); void load(); })
+      .then((d) => { if (!d.success) throw new Error("unauthorized"); setZones(d.user?.zones ?? []); setRole(d.user?.role ?? ""); setReady(true); })
       .catch(() => router.replace("/admin/login"));
   }, [load, router]);
 
   useEffect(() => {
     if (!ready) return;
+    void load();
     const id = window.setInterval(() => void load(), 3000);
     return () => window.clearInterval(id);
   }, [ready, load]);
@@ -124,7 +129,7 @@ export default function MapaGrandePage() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-slate-950">
-      <MapaAlertas reports={reports} mode="admin" heightClassName="h-screen" monitorZones={zones} kioskMode focusTarget={focusTarget} />
+      <MapaAlertas reports={reports} mode="admin" heightClassName="h-screen" monitorZones={zones} kioskMode focusTarget={focusTarget} privacyMode={role === "INSTITUTIONAL"} />
 
       {alertCard && (
         <aside className="pointer-events-none absolute left-4 top-4 z-[1100] w-[min(390px,calc(100vw-32px))] rounded-2xl border border-red-400/60 bg-slate-950/80 p-4 text-white shadow-2xl backdrop-blur-md">

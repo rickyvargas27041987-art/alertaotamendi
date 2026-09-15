@@ -1366,6 +1366,12 @@ export default function Home() {
           <button onClick={() => (window.location.href = "/operativo")} className="flex items-center justify-center rounded-2xl border border-cyan-800/60 bg-cyan-950/30 text-lg hover:bg-cyan-900/40" aria-label="Acceso operativo" title="Acceso operativo">🛡️</button>
         </section>
 
+        <div className="mt-4 text-center">
+          <a href="/instalar" className="inline-block rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-300">
+            📲 Instalar para mi localidad
+          </a>
+        </div>
+
         <footer className="py-8 text-center text-xs text-slate-600">
           <p>ALERTA OTAMENDI · Comunidad conectada</p>
           <p className="mt-1 text-[9px] tracking-widest text-slate-700">

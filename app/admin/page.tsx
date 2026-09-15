@@ -13,7 +13,7 @@ const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
 type Report = {
   id: number;
   category: string;
-  description: string;
+  description?: string;
   status: string;
   latitude: number | null;
   longitude: number | null;
@@ -252,6 +252,7 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [emergencyMode, setEmergencyMode] = useState(false);
   const [operationLoading, setOperationLoading] = useState(false);
   const [timeline, setTimeline] = useState<Array<{ id: number | string; actorName: string; action: string; details: string | null; createdAt: string }>>([]);
+  const isInstitutional = currentUser?.role === "INSTITUTIONAL";
 
   const [mapFocusTarget, setMapFocusTarget] = useState<{
     latitude: number;
@@ -436,17 +437,16 @@ const [aiError, setAiError] = useState<string | null>(null);
   }
 
   useEffect(() => {
-    void loadReports();
-    void loadVehicleWatches();
-
-    const interval = window.setInterval(() => void loadReports(), 3000);
-
-  return () => window.clearInterval(interval);
+    fetch("/api/admin/me", { cache: "no-store" }).then(r => r.json()).then(d => { if (d.success) setCurrentUser(d.user); }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetch("/api/admin/me", { cache: "no-store" }).then(r => r.json()).then(d => { if (d.success) setCurrentUser(d.user); }).catch(() => {});
-  }, []);
+    if (!currentUser) return;
+    void loadReports();
+    if (currentUser.role !== "INSTITUTIONAL") void loadVehicleWatches();
+    const interval = window.setInterval(() => void loadReports(), 3000);
+    return () => window.clearInterval(interval);
+  }, [currentUser?.role]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -511,10 +511,10 @@ const [aiError, setAiError] = useState<string | null>(null);
   setAiError(null);
   setSelectedAddress(null);
   setTimeline([]);
-  void loadReportOperations(report.id);
+  if (!isInstitutional) void loadReportOperations(report.id);
 
   // El análisis automático ya viene guardado con el reporte.
-  if (report.aiAnalyzed && report.aiCategory && report.aiPriority && report.aiSummary && report.aiConfidence !== null && report.aiConfidence !== undefined) {
+  if (!isInstitutional && report.aiAnalyzed && report.aiCategory && report.aiPriority && report.aiSummary && report.aiConfidence !== null && report.aiConfidence !== undefined) {
     setAiResult({
       category: report.aiCategory,
       priority: report.aiPriority as AiAnalysisResult["priority"],
@@ -530,7 +530,7 @@ const [aiError, setAiError] = useState<string | null>(null);
     setAiResult(null);
   }
 
-  if (report.latitude !== null && report.longitude !== null) {
+  if (!isInstitutional && report.latitude !== null && report.longitude !== null) {
     setAddressLoading(true);
     fetch(`/api/reverse-geocode?lat=${encodeURIComponent(report.latitude)}&lon=${encodeURIComponent(report.longitude)}`, { cache: "no-store" })
       .then((r) => r.json())
@@ -724,7 +724,7 @@ const [aiError, setAiError] = useState<string | null>(null);
 
       return (
         report.category.toLowerCase().includes(term) ||
-        report.description.toLowerCase().includes(term)
+        (report.description ?? "").toLowerCase().includes(term)
       );
     });
   }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes, emergencyMode]);
@@ -744,7 +744,7 @@ const [aiError, setAiError] = useState<string | null>(null);
       if (!term) return true;
       const number = term.replace(/^#/, "");
       if (/^\d+$/.test(number)) return String(report.id) === number;
-      return [report.category, report.description, report.locality, report.district, report.province]
+      return [report.category, report.description ?? "", report.locality, report.district, report.province]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
@@ -784,7 +784,7 @@ const [aiError, setAiError] = useState<string | null>(null);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <PersonPatternAlerts
+      {!isInstitutional && <PersonPatternAlerts
   onOpenReport={(reportId) => {
     const report = reports.find(
       (item) => item.id === reportId
@@ -798,7 +798,7 @@ const [aiError, setAiError] = useState<string | null>(null);
       );
     }
   }}
-/>
+/>}
       {alertaNueva && (
         <div
           className={`fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border p-4 shadow-2xl ${alertVisual.box}`}
@@ -815,7 +815,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                 {categoryEmoji(alertaNueva.category)} {displayCategory(alertaNueva.category)}
               </h2>
               <p className="mt-1 line-clamp-2 text-sm text-white/75">
-                {alertaNueva.description}
+                {alertaNueva.description || "Nueva situación importante en la jurisdicción."}
               </p>
             </div>
             <button
@@ -885,7 +885,7 @@ const [aiError, setAiError] = useState<string | null>(null);
             >
               🖥️ Mapa grande
             </a>
-            <OperationalAccessPanel />
+            {!isInstitutional && <OperationalAccessPanel />}
             {currentUser?.role === "ADMIN" && (
               <a
                 href="/admin/usuarios"
@@ -986,6 +986,7 @@ const [aiError, setAiError] = useState<string | null>(null);
               focusTarget={mapFocusTarget}
               monitorZones={currentUser?.zones ?? []}
               onOpenHistory={() => { setHistoryOpen(true); setHistoryTab("historial"); }}
+              privacyMode={isInstitutional}
             />
           </div>
 
@@ -1027,7 +1028,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                     </div>
 
                     <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-slate-400">
-                      {report.description}
+                      {report.description || "Información general disponible en la vista institucional."}
                     </p>
 
                     {alertasCriticasPendientes.includes(report.id) && (
@@ -1040,7 +1041,7 @@ const [aiError, setAiError] = useState<string | null>(null);
               </div>
             </div>
 
-            <div className="rounded-3xl border border-cyan-500/25 bg-cyan-950/10 p-3">
+            {!isInstitutional && <div className="rounded-3xl border border-cyan-500/25 bg-cyan-950/10 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-300">
@@ -1172,7 +1173,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </aside>
         </section>
 
@@ -1196,7 +1197,7 @@ const [aiError, setAiError] = useState<string | null>(null);
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Gestión</p>
               <h2 className="text-xl font-black">📋 Alertas y seguimiento</h2>
-              <p className="mt-1 text-sm text-slate-400">Buscá, filtrá y actualizá el estado de cada reporte.</p>
+              <p className="mt-1 text-sm text-slate-400">{isInstitutional ? "Consultá la actividad agregada y en tiempo real de la jurisdicción." : "Buscá, filtrá y actualizá el estado de cada reporte."}</p>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1206,7 +1207,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   setSearch(e.target.value);
                   setListLimit(12);
                 }}
-                placeholder="Buscar N° de reporte, tipo o texto"
+                placeholder={isInstitutional ? "Buscar N° o categoría" : "Buscar N° de reporte, tipo o texto"}
                 className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-slate-500"
               />
               <select
@@ -1276,7 +1277,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                         )}
                       </div>
                       <h3 className="mt-2 text-lg font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</h3>
-                      <p className="mt-1 max-w-4xl text-sm text-slate-300">{report.description}</p>
+                      <p className="mt-1 max-w-4xl text-sm text-slate-300">{report.description || "Detalle protegido · vista institucional"}</p>
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                         <span>{formatDate(report.createdAt)}</span>
                         {report.imageUrl && <span>📷 Foto</span>}
@@ -1287,22 +1288,22 @@ const [aiError, setAiError] = useState<string | null>(null);
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2">
-                      <button
+                      {!isInstitutional && <button
                         onClick={() => openReport(report)}
                         className="rounded-xl bg-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-600"
                       >
                         Ver detalle
-                      </button>
-                      <button
+                      </button>}
+                      {!isInstitutional && <button
                         onClick={() => setOpenActionsId(openActionsId === report.id ? null : report.id)}
                         className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
                       >
                         {openActionsId === report.id ? "Cerrar acciones" : "Acciones"}
-                      </button>
+                      </button>}
                     </div>
                   </div>
 
-                  {openActionsId === report.id && (
+                  {!isInstitutional && openActionsId === report.id && (
                     <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-800 pt-3">
                       <button onClick={() => void changeStatus(report.id, "en_analisis")} disabled={updatingId === report.id} className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">🔎 En análisis</button>
                       <button onClick={() => void changeStatus(report.id, "verificada")} disabled={updatingId === report.id} className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">✓ Verificada</button>
@@ -1378,7 +1379,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                         <div className="flex flex-wrap items-center gap-2"><span className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-black">#{report.id}</span><span className="font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</span><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(report.status)}`}>{statusLabel(report.status)}</span></div>
                         <span className="text-xs text-slate-500">{formatDate(report.createdAt)}</span>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-300">{report.description}</p>
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-300">{report.description || "Detalle protegido · vista institucional"}</p>
                       <p className="mt-1 text-xs text-slate-500">📍 {[report.locality, report.district, report.province].filter(Boolean).join(" · ") || "Ubicación sin nombre"}</p>
                     </button>
                   ))}
@@ -1394,7 +1395,7 @@ const [aiError, setAiError] = useState<string | null>(null);
               {historyTab === "zonas" && (
                 <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <div className="overflow-hidden rounded-2xl border border-slate-800">
-                    <MapaAlertas reports={historyReports} mode="admin" heightClassName="h-[430px]" monitorZones={currentUser?.zones ?? []} kioskMode hotZoneMode />
+                    <MapaAlertas reports={historyReports} mode="admin" heightClassName="h-[430px]" monitorZones={currentUser?.zones ?? []} kioskMode hotZoneMode privacyMode={isInstitutional} />
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                     <h3 className="font-black">🔥 Sectores con mayor concentración</h3>
@@ -1425,12 +1426,13 @@ const [aiError, setAiError] = useState<string | null>(null);
               </div>
 
               <div className="space-y-5">
+                {isInstitutional && <div className="rounded-2xl border border-sky-700/50 bg-sky-950/30 p-4 text-sm leading-6 text-sky-100">🏛️ Vista institucional: los puntos del mapa son aproximados y los datos sensibles permanecen protegidos.</div>}
                 <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Descripción</p>
-                  <p className="mt-2 leading-6 text-slate-200">{selectedReport.description}</p>
+                  <p className="mt-2 leading-6 text-slate-200">{selectedReport.description || "Detalle reservado para personal operativo autorizado."}</p>
                 </div>
 
-                <div className="rounded-2xl border border-blue-500/30 bg-blue-950/20 p-4">
+                {!isInstitutional && <div className="rounded-2xl border border-blue-500/30 bg-blue-950/20 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-wider text-blue-300">👤 Responsable operativo</p>
@@ -1445,9 +1447,9 @@ const [aiError, setAiError] = useState<string | null>(null);
                       <button onClick={() => void reportOperation(selectedReport.id, currentUser?.id ? "claim" : "acknowledge")} disabled={operationLoading} className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black hover:bg-blue-500 disabled:opacity-50">{operationLoading ? "Guardando…" : currentUser?.id ? "✋ Tomar alerta" : "✓ Marcar como revisada"}</button>
                     )}
                   </div>
-                </div>
+                </div>}
 
-                <div className="rounded-2xl border border-violet-500/25 bg-violet-950/15 p-4">
+                {!isInstitutional && <div className="rounded-2xl border border-violet-500/25 bg-violet-950/15 p-4">
                   <p className="text-xs font-bold uppercase tracking-wider text-violet-300">🕒 Línea de tiempo del incidente</p>
                   <div className="mt-4 space-y-3 border-l-2 border-violet-500/30 pl-4">
                     {timeline.length === 0 && <p className="text-sm text-slate-500">Cargando actividad…</p>}
@@ -1462,7 +1464,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>}
 
                 {(selectedReport.imageUrl || selectedReport.videoUrl || selectedReport.audioUrl) && (
                   <div className="space-y-4">
@@ -1523,7 +1525,7 @@ const [aiError, setAiError] = useState<string | null>(null);
 
                 {selectedReport.latitude !== null && selectedReport.longitude !== null && (
                   <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/15 p-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">📍 Dirección del reporte</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">📍 {isInstitutional ? "Zona general" : "Dirección del reporte"}</p>
                     {addressLoading ? (
                       <p className="mt-2 text-sm text-slate-400">Buscando calle y altura…</p>
                     ) : selectedAddress ? (
@@ -1534,12 +1536,12 @@ const [aiError, setAiError] = useState<string | null>(null);
                     ) : (
                       <>
                         <p className="mt-2 font-semibold text-slate-200">{[selectedReport.locality, selectedReport.district, selectedReport.province].filter(Boolean).join(" · ") || "Dirección no disponible"}</p>
-                        <p className="mt-1 text-xs text-slate-500">La ubicación exacta sigue disponible en el mapa operativo.</p>
+                        <p className="mt-1 text-xs text-slate-500">{isInstitutional ? "La dirección y las coordenadas exactas están protegidas." : "La ubicación exacta sigue disponible en el mapa operativo."}</p>
                       </>
                     )}
                   </div>
                 )}
-<div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4">
+{!isInstitutional && <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-4">
   <div>
     <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
       🤖 Análisis IA
@@ -1717,8 +1719,8 @@ const [aiError, setAiError] = useState<string | null>(null);
 
     </div>
   )} 
-</div>
-                <div>
+</div>}
+                {!isInstitutional && <div>
                   <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Cambiar estado</p>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => void changeStatus(selectedReport.id, "en_analisis")} disabled={updatingId === selectedReport.id} className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">🔎 En análisis</button>
@@ -1726,7 +1728,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                     <button onClick={() => void changeStatus(selectedReport.id, "resuelta")} disabled={updatingId === selectedReport.id} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">✔ Resuelta</button>
                     <button onClick={() => void changeStatus(selectedReport.id, "descartada")} disabled={updatingId === selectedReport.id} className="rounded-xl bg-slate-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">✕ Descartar</button>
                   </div>
-                </div>
+                </div>}
 
                 <button
                   onClick={returnToMap}

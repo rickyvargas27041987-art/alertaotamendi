@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { audit, canOperateReport, getMonitorActor } from "@/lib/monitorAuth";
+import { audit, canManageCenter, canOperateReport, getMonitorActor } from "@/lib/monitorAuth";
 
 type VehicleVisualAnalysis = {
   plate: string | null;
@@ -176,6 +176,7 @@ export async function GET() {
         }
       );
     }
+    if (!canManageCenter(actor)) return NextResponse.json({ success: false, error: "El perfil institucional no tiene acceso a seguimientos." }, { status: 403 });
 
     const vehicles =
       await prisma.vehicleWatch.findMany({
@@ -231,6 +232,7 @@ export async function POST(
         }
       );
     }
+    if (!canManageCenter(actor)) return NextResponse.json({ success: false, error: "El perfil institucional no puede crear seguimientos." }, { status: 403 });
 
     const body = await request.json();
 

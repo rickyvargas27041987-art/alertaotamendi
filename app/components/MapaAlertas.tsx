@@ -35,6 +35,7 @@ type Props = {
   kioskMode?: boolean;
   onOpenHistory?: () => void;
   hotZoneMode?: boolean;
+  privacyMode?: boolean;
 };
 
 /*

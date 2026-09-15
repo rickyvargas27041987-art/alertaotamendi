@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getMonitorActor } from "@/lib/monitorAuth";
+import { canManageCenter, getMonitorActor } from "@/lib/monitorAuth";
 
 export async function GET() {
   try {
-    if (!(await getMonitorActor())) {
+    const actor = await getMonitorActor();
+    if (!actor || !canManageCenter(actor)) {
       return NextResponse.json(
         {
           success: false,
@@ -61,7 +62,8 @@ export async function PATCH(
   request: Request
 ) {
   try {
-    if (!(await getMonitorActor())) {
+    const actor = await getMonitorActor();
+    if (!actor || !canManageCenter(actor)) {
       return NextResponse.json(
         {
           success: false,

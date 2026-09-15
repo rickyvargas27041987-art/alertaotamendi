@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { audit, getMonitorActor } from "@/lib/monitorAuth";
+import { audit, canManageCenter, getMonitorActor } from "@/lib/monitorAuth";
 import { configZones, ensureCenterConfig, operationalCode } from "@/lib/operationalAccess";
 
 export async function GET() {
   const actor = await getMonitorActor();
   if (!actor) return NextResponse.json({ success: false, error: "No autorizado." }, { status: 401 });
+  if (!canManageCenter(actor)) return NextResponse.json({ success: false, error: "El perfil institucional no tiene acceso a códigos operativos." }, { status: 403 });
 
   try {
     const config = await ensureCenterConfig(actor);
@@ -33,6 +34,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const actor = await getMonitorActor();
   if (!actor) return NextResponse.json({ success: false, error: "No autorizado." }, { status: 401 });
+  if (!canManageCenter(actor)) return NextResponse.json({ success: false, error: "El perfil institucional no puede administrar accesos operativos." }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "");

@@ -19,7 +19,10 @@ export async function GET() {
 export async function DELETE() {
   const session = await getOperationalSession();
   if (session) {
-    await prisma.operationalSession.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
+    await prisma.$transaction([
+      prisma.operationalPushSubscription.updateMany({ where: { sessionId: session.id }, data: { enabled: false } }),
+      prisma.operationalSession.update({ where: { id: session.id }, data: { revokedAt: new Date() } }),
+    ]);
     await operationalAudit(session.configId, session.officerName, "OPERATIONAL_LOGOUT", { sessionId: session.id });
   }
   const response = NextResponse.json({ success: true });
