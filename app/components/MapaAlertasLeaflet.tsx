@@ -127,7 +127,7 @@ const PUBLIC_USER_RADIUS_METERS = 200;
  */
 const PUBLIC_MAP_RADIUS_METERS = 200;
 
-const ADMIN_LAST_LOCATION_STORAGE_KEY = "alerta_otamendi_admin_last_location";
+const ADMIN_LAST_LOCATION_STORAGE_KEY = "alerta_otamendi_admin_last_location_v2";
 
 /*
  * Las alertas nuevas tienen animación durante 10 minutos.
@@ -674,6 +674,7 @@ export default function MapaAlertasLeaflet({
 
   const [preventiveAlerts, setPreventiveAlerts] = useState<PreventiveAlert[]>([]);
   const [jurisdictionBoundaries, setJurisdictionBoundaries] = useState<Array<{ key: string; label: string; data: GeoJsonObject }>>([]);
+  const [selectedDistrictBoundary, setSelectedDistrictBoundary] = useState<{ key: string; label: string; data: GeoJsonObject } | null>(null);
 
   const [
     locationMessage,
@@ -682,20 +683,31 @@ export default function MapaAlertasLeaflet({
 
   const [provincias] = useState<Provincia[]>(provinciasArgentina);
   const [provinciaId, setProvinciaId] = useState("");
-  const [localidades, setLocalidades] = useState<Localidad[]>([]);
+  const [district, setDistrict] = useState("");
   const [localidadId, setLocalidadId] = useState("");
   const [adminSelectedLocation, setAdminSelectedLocation] = useState<AdminSelectedLocation>(null);
   const [adminLocationKey, setAdminLocationKey] = useState(0);
 
-  const pendingAdminLocalityIdRef = useRef<string | null>(null);
+  const districts = useMemo(() => Array.from(new Set(
+    localidadesPorProvincia(provinciaId)
+      .map((item) => item.municipio || item.departamento)
+      .filter((item): item is string => Boolean(item))
+  )).sort((a, b) => a.localeCompare(b, "es")), [provinciaId]);
+
+  const localidades = useMemo<Localidad[]>(() => localidadesPorProvincia(provinciaId)
+    .filter((item) => (item.municipio || item.departamento) === district)
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")), [district, provinciaId]);
+
+  const primaryZone = useMemo<MonitorZone>(() => monitorZones[0] ?? {
+    province: "Buenos Aires",
+    district: "General Alvarado",
+    locality: null,
+  }, [monitorZones]);
 
   // Zona principal del usuario. Para el administrador legado, que no tiene
   // zonas asignadas en la base, usamos Otamendi como jurisdicción principal.
   const primaryJurisdiction = useMemo<AdminSelectedLocation>(() => {
-    const zone = monitorZones[0];
-    if (!zone) {
-      return { latitude: OTAMENDI_CENTER[0], longitude: OTAMENDI_CENTER[1], label: "Comandante Nicanor Otamendi" };
-    }
+    const zone = primaryZone;
 
     const zoneLocality = zone.locality;
     if (zoneLocality) {
@@ -732,7 +744,7 @@ export default function MapaAlertasLeaflet({
     }
 
     return { latitude: OTAMENDI_CENTER[0], longitude: OTAMENDI_CENTER[1], label: zone.district || "Mi jurisdicción" };
-  }, [monitorZones, jurisdictionBoundaries]);
+  }, [primaryZone, jurisdictionBoundaries]);
 
   const mountedRef =
     useRef(true);
@@ -769,6 +781,7 @@ export default function MapaAlertasLeaflet({
 
       const saved = JSON.parse(raw) as {
         provinciaId?: string;
+        district?: string;
         localidadId?: string;
         latitude?: number;
         longitude?: number;
@@ -779,10 +792,8 @@ export default function MapaAlertasLeaflet({
         setProvinciaId(saved.provinciaId);
       }
 
-      if (saved.localidadId) {
-        pendingAdminLocalityIdRef.current =
-          saved.localidadId;
-      }
+      if (saved.district) setDistrict(saved.district);
+      if (saved.localidadId) setLocalidadId(saved.localidadId);
 
       if (
         typeof saved.latitude === "number" &&
@@ -807,41 +818,72 @@ export default function MapaAlertasLeaflet({
     }
   }, [mode]);
 
-  /* =======================================================
-     PROVINCIAS / LOCALIDADES - SOLO ADMIN
-     Base local: no depende de GeoRef en vivo.
-  ======================================================= */
+  function targetFromBoundary(data: GeoJsonObject, label: string): NonNullable<AdminSelectedLocation> | null {
+    const leafletBounds = L.geoJSON(data).getBounds();
+    if (!leafletBounds.isValid()) return null;
+    const center = leafletBounds.getCenter();
+    return {
+      latitude: center.lat,
+      longitude: center.lng,
+      label,
+      bounds: [
+        [leafletBounds.getSouth(), leafletBounds.getWest()],
+        [leafletBounds.getNorth(), leafletBounds.getEast()],
+      ],
+      detailZoom: false,
+      detailLevel: 0,
+    };
+  }
 
-  useEffect(() => {
-    if (mode !== "admin" || !provinciaId) {
-      setLocalidades([]);
-      setLocalidadId("");
+  async function mostrarPartido(provinceIdValue: string, districtValue: string) {
+    const province = provincias.find((item) => item.id === provinceIdValue);
+    if (!province || !districtValue) return;
+
+    const districtLocalities = localidadesPorProvincia(provinceIdValue)
+      .filter((item) => (item.municipio || item.departamento) === districtValue);
+    if (districtLocalities.length) {
+      const latitude = districtLocalities.reduce((sum, item) => sum + item.lat, 0) / districtLocalities.length;
+      const longitude = districtLocalities.reduce((sum, item) => sum + item.lon, 0) / districtLocalities.length;
+      setAdminSelectedLocation({ latitude, longitude, label: `${districtValue}, ${province.nombre}` });
+      setAdminLocationKey((value) => value + 1);
+    }
+
+    try {
+      const params = new URLSearchParams({ province: province.nombre, district: districtValue });
+      const response = await fetch(`/api/admin/jurisdiction-boundary?${params}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.boundary) return;
+      const boundary = {
+        key: `${province.nombre}|${districtValue}`,
+        label: districtValue,
+        data: data.boundary as GeoJsonObject,
+      };
+      setSelectedDistrictBoundary(boundary);
+      const target = targetFromBoundary(boundary.data, `Partido / departamento de ${districtValue}`);
+      if (target) {
+        setAdminSelectedLocation(target);
+        setAdminLocationKey((value) => value + 1);
+      }
+    } catch (error) {
+      console.warn("No se pudo cargar el límite del partido o departamento:", error);
+    }
+  }
+
+  function seleccionarPartido(value: string) {
+    setDistrict(value);
+    setLocalidadId("");
+    setSelectedDistrictBoundary(null);
+    if (!value) {
+      setAdminSelectedLocation(null);
       return;
     }
-
-    const lista = localidadesPorProvincia(provinciaId).slice();
-
-    lista.sort((a, b) =>
-      a.nombre.localeCompare(b.nombre, "es")
-    );
-
-    setLocalidades(lista);
-
-    const pendingLocalityId =
-      pendingAdminLocalityIdRef.current;
-
-    if (
-      pendingLocalityId &&
-      lista.some(
-        (item) => item.id === pendingLocalityId
-      )
-    ) {
-      setLocalidadId(pendingLocalityId);
-      pendingAdminLocalityIdRef.current = null;
-    } else {
-      setLocalidadId("");
+    void mostrarPartido(provinciaId, value);
+    try {
+      window.localStorage.setItem(ADMIN_LAST_LOCATION_STORAGE_KEY, JSON.stringify({ provinciaId, district: value }));
+    } catch (error) {
+      console.error("No se pudo guardar el último partido del Centro de Monitoreo:", error);
     }
-  }, [mode, provinciaId]);
+  }
 
   function seleccionarLocalidad(id: string) {
     setLocalidadId(id);
@@ -889,6 +931,7 @@ export default function MapaAlertasLeaflet({
         ADMIN_LAST_LOCATION_STORAGE_KEY,
         JSON.stringify({
           provinciaId,
+          district,
           localidadId: id,
           latitude: localidad.lat,
           longitude: localidad.lon,
@@ -903,15 +946,67 @@ export default function MapaAlertasLeaflet({
     }
   }
 
+  async function mostrarMiJurisdiccion() {
+    const zone = primaryZone;
+    const province = provincias.find((item) => item.nombre === zone.province);
+    if (!province) {
+      if (primaryJurisdiction) {
+        setAdminSelectedLocation({ ...primaryJurisdiction, detailZoom: false, detailLevel: 0 });
+        setAdminLocationKey((value) => value + 1);
+      }
+      return;
+    }
+
+    setProvinciaId(province.id);
+    setDistrict(zone.district);
+    setSelectedDistrictBoundary(null);
+
+    if (!zone.locality) {
+      setLocalidadId("");
+      await mostrarPartido(province.id, zone.district);
+      return;
+    }
+
+    const locality = localidadesPorProvincia(province.id).find((item) =>
+      (item.municipio || item.departamento) === zone.district &&
+      item.nombre.trim().toLocaleLowerCase("es-AR") === zone.locality?.trim().toLocaleLowerCase("es-AR")
+    );
+    if (!locality) return;
+
+    setLocalidadId(locality.id);
+    const baseLocation: NonNullable<AdminSelectedLocation> = {
+      latitude: locality.lat,
+      longitude: locality.lon,
+      label: `${locality.nombre}, ${zone.district}`,
+      localityId: locality.id,
+      detailZoom: false,
+      detailLevel: 0,
+    };
+    setAdminSelectedLocation(baseLocation);
+    setAdminLocationKey((value) => value + 1);
+
+    try {
+      const response = await fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(locality.id)}`);
+      const data = response.ok ? await response.json() : null;
+      if (data?.success && Array.isArray(data.bounds)) {
+        setAdminSelectedLocation({ ...baseLocation, bounds: data.bounds });
+        setAdminLocationKey((value) => value + 1);
+      }
+    } catch (error) {
+      console.warn("No se pudieron cargar los límites de la localidad asignada:", error);
+    }
+  }
+
   // Cargamos solamente alertas preventivas ya generadas (3+).
   // El monitoreo usa el endpoint privado; la app pública recibe solo datos seguros.
   useEffect(() => {
-    if (mode !== "admin" || !monitorZones.length) {
+    if (mode !== "admin") {
       setJurisdictionBoundaries([]);
       return;
     }
     let cancelled = false;
-    const uniqueZones = Array.from(new Map(monitorZones.map((zone) => [`${zone.province}|${zone.district}`, zone])).values());
+    const zonesToLoad = monitorZones.length ? monitorZones : [primaryZone];
+    const uniqueZones = Array.from(new Map(zonesToLoad.map((zone) => [`${zone.province}|${zone.district}`, zone])).values());
     Promise.all(uniqueZones.map(async (zone) => {
       const params = new URLSearchParams({ province: zone.province, district: zone.district });
       const response = await fetch(`/api/admin/jurisdiction-boundary?${params}`, { cache: "no-store" });
@@ -921,7 +1016,14 @@ export default function MapaAlertasLeaflet({
       if (!cancelled) setJurisdictionBoundaries(items.filter((item): item is NonNullable<typeof item> => Boolean(item)));
     }).catch((error) => console.warn("No se pudieron cargar los límites de jurisdicción:", error));
     return () => { cancelled = true; };
-  }, [mode, monitorZones]);
+  }, [mode, monitorZones, primaryZone]);
+
+  const visibleJurisdictionBoundaries = useMemo(() => {
+    if (!selectedDistrictBoundary || jurisdictionBoundaries.some((item) => item.key === selectedDistrictBoundary.key)) {
+      return jurisdictionBoundaries;
+    }
+    return [...jurisdictionBoundaries, selectedDistrictBoundary];
+  }, [jurisdictionBoundaries, selectedDistrictBoundary]);
 
   useEffect(() => {
     if (privacyMode) {
@@ -1265,26 +1367,7 @@ export default function MapaAlertasLeaflet({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  // Si el operador ya eligió provincia/localidad, «Mi jurisdicción»
-                  // respeta esa selección. Si no, vuelve a su zona asignada.
-                  const targetJurisdiction = adminSelectedLocation ?? primaryJurisdiction;
-                  if (!targetJurisdiction) return;
-                  const jurisdictionView = { ...targetJurisdiction, detailZoom: false, detailLevel: 0 as const };
-                  setAdminSelectedLocation(jurisdictionView);
-                  setAdminLocationKey((value) => value + 1);
-
-                  if (targetJurisdiction.localityId) {
-                    fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(targetJurisdiction.localityId)}`)
-                      .then((response) => response.ok ? response.json() : null)
-                      .then((data) => {
-                        if (!data?.success || !Array.isArray(data.bounds)) return;
-                        setAdminSelectedLocation({ ...targetJurisdiction, bounds: data.bounds, detailZoom: false, detailLevel: 0 });
-                        setAdminLocationKey((value) => value + 1);
-                      })
-                      .catch((error) => console.warn("No se pudieron cargar límites de jurisdicción:", error));
-                  }
-                }}
+                onClick={() => void mostrarMiJurisdiccion()}
                 className="rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-black text-white hover:bg-emerald-500"
                 title={primaryJurisdiction?.label ?? "Mi jurisdicción"}
               >
@@ -1322,11 +1405,14 @@ export default function MapaAlertasLeaflet({
               )}
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-3">
               <select
                 value={provinciaId}
                 onChange={(event) => {
                   setProvinciaId(event.target.value);
+                  setDistrict("");
+                  setLocalidadId("");
+                  setSelectedDistrictBoundary(null);
                   setAdminSelectedLocation(null);
                 }}
                                 className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
@@ -1338,12 +1424,22 @@ export default function MapaAlertasLeaflet({
               </select>
 
               <select
-                value={localidadId}
-                onChange={(event) => seleccionarLocalidad(event.target.value)}
+                value={district}
+                onChange={(event) => seleccionarPartido(event.target.value)}
                 disabled={!provinciaId}
                 className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
               >
-                <option value="">"Seleccionar localidad"</option>
+                <option value="">{provincias.find((item) => item.id === provinciaId)?.nombre === "Buenos Aires" ? "Seleccionar partido" : "Seleccionar departamento / municipio"}</option>
+                {districts.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+
+              <select
+                value={localidadId}
+                onChange={(event) => seleccionarLocalidad(event.target.value)}
+                disabled={!district}
+                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white outline-none disabled:opacity-50"
+              >
+                <option value="">Seleccionar localidad (opcional)</option>
                 {localidades.map((localidad) => (
                   <option key={localidad.id} value={localidad.id}>{localidad.nombre}</option>
                 ))}
@@ -1529,7 +1625,7 @@ export default function MapaAlertasLeaflet({
                 </>
               )}
 
-            {jurisdictionBoundaries.map((boundary) => (
+            {visibleJurisdictionBoundaries.map((boundary) => (
               <GeoJSON
                 key={boundary.key}
                 data={boundary.data}

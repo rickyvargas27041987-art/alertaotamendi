@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canViewReport, getMonitorActor } from "@/lib/monitorAuth";
+import { getMonitorActor } from "@/lib/monitorAuth";
 
 type BoundaryGeometry = {
   type: "Polygon" | "MultiPolygon";
@@ -16,10 +16,6 @@ export async function GET(request: Request) {
   if (!province || !district) {
     return NextResponse.json({ success: false, error: "Jurisdicción incompleta." }, { status: 400 });
   }
-  if (!canViewReport(actor, { province, district, locality: null })) {
-    return NextResponse.json({ success: false, error: "Sin permiso para esta jurisdicción." }, { status: 403 });
-  }
-
   try {
     const territorialName = province === "Buenos Aires" ? `Partido de ${district}` : `Departamento de ${district}`;
     const query = new URLSearchParams({
