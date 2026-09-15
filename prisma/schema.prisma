@@ -191,6 +191,23 @@ model PushSubscription {
   @@index([createdAt])
 }
 
+// Instalación anónima de la app pública. Permite contar usuarios sin guardar
+// nombre, teléfono ni otra información personal.
+model AppInstallation {
+  id             Int      @id @default(autoincrement())
+  installationId String   @unique
+  platform       String?
+  province       String?
+  district       String?
+  locality       String?
+  createdAt      DateTime @default(now())
+  lastSeenAt     DateTime @updatedAt
+
+  @@index([province, district, locality])
+  @@index([createdAt])
+  @@index([lastSeenAt])
+}
+
 model MonitoringUser {
   id           Int       @id @default(autoincrement())
   username     String    @unique
