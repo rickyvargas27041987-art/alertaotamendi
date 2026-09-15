@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import PersonPatternAlerts from "../components/PersonPatternAlerts";
 import OperationalStatistics from "../components/OperationalStatistics";
 import OperationalAccessPanel from "../components/OperationalAccessPanel";
+import AppUserStatistics from "../components/AppUserStatistics";
 
 const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
   ssr: false,
@@ -1174,6 +1175,8 @@ const [aiError, setAiError] = useState<string | null>(null);
                 </div>
               )}
             </div>}
+
+            {currentUser?.role === "ADMIN" && <AppUserStatistics />}
           </aside>
         </section>
 

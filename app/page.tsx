@@ -145,6 +145,28 @@ function saveNotifiedId(id: number) {
   );
 }
 
+const APP_INSTALLATION_STORAGE_KEY = "alerta_app_installation_id";
+
+function getOrCreateInstallationId() {
+  const saved = localStorage.getItem(APP_INSTALLATION_STORAGE_KEY);
+  if (saved) return saved;
+
+  const generated =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random()
+          .toString(36)
+          .slice(2)}`;
+
+  localStorage.setItem(APP_INSTALLATION_STORAGE_KEY, generated);
+  return generated;
+}
+
+function getInstallationLocalityId() {
+  const match = window.location.pathname.match(/^\/instalar\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 export default function Home() {
   const [isAndroidApp, setIsAndroidApp] = useState(false);
   const [selected, setSelected] = useState("");
@@ -180,6 +202,23 @@ export default function Home() {
   const emergencyMenuRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const baselineReadyRef = useRef(false);
+
+  async function registerAppInstallation(lat?: number, lon?: number) {
+    const installationId = getOrCreateInstallationId();
+    const platform = hasNativeAndroidBridge() ? "android" : "web";
+
+    await fetch("/api/app-installation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        installationId,
+        platform,
+        localityId: getInstallationLocalityId(),
+        latitude: lat,
+        longitude: lon,
+      }),
+    });
+  }
 
   function showToast(id: number, title: string, body: string, important: boolean) {
     if (getNotifiedIds().has(id)) return;
@@ -311,6 +350,8 @@ export default function Home() {
         await refreshPushSubscription(lat, lon);
       }
 
+      await registerAppInstallation(lat, lon);
+
       localStorage.setItem("notificationsEnabled", "true");
       setNotificationsEnabled(true);
       setIsAndroidApp(nativeAndroid);
@@ -377,6 +418,10 @@ export default function Home() {
   }
 
   useEffect(() => {
+    void registerAppInstallation().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     const nativeAndroid = hasNativeAndroidBridge();
     setIsAndroidApp(nativeAndroid);
 
@@ -396,6 +441,7 @@ export default function Home() {
           setLocationMessage("✅ Alertas cercanas activas.");
 
           await refreshNativeFcmSubscription(lat, lon);
+          await registerAppInstallation(lat, lon);
         })
         .catch(() => {
           setLocationMessage(
@@ -417,6 +463,7 @@ export default function Home() {
           setLocationMessage("✅ Alertas cercanas activas.");
 
           await refreshPushSubscription(lat, lon);
+          await registerAppInstallation(lat, lon);
         })
         .catch(() => {
           setLocationMessage(

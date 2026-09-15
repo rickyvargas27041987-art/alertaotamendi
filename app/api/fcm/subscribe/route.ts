@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolveJurisdiction } from "@/lib/jurisdiction";
 
 export async function POST(request: Request) {
   try {
@@ -49,6 +50,8 @@ export async function POST(request: Request) {
       );
     }
 
+    const jurisdiction = await resolveJurisdiction(latitude, longitude);
+
     const device = await prisma.fcmDevice.upsert({
       where: {
         token,
@@ -59,12 +62,14 @@ export async function POST(request: Request) {
         latitude,
         longitude,
         enabled: true,
+        ...jurisdiction,
       },
 
       update: {
         latitude,
         longitude,
         enabled: true,
+        ...jurisdiction,
       },
 
       select: {
