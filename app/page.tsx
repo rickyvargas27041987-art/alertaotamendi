@@ -796,7 +796,7 @@ export default function Home() {
                 </p>
                 <h2 className="mt-1 text-2xl font-black">🚨 Alerta Otamendi</h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Una herramienta comunitaria para comunicar y recibir información útil de forma rápida y ordenada.
+                  Una herramienta comunitaria de prevención, información y ayuda para cuidarnos entre todos.
                 </p>
               </div>
               <button
@@ -810,29 +810,54 @@ export default function Home() {
             </div>
 
             <div className="mt-5 space-y-3 text-sm leading-5 text-slate-300">
+              <div className="rounded-2xl border border-red-500/20 bg-red-950/20 p-3">
+                <p className="font-bold text-white">🤝 ¿Qué es Alerta Otamendi?</p>
+                <p className="mt-1">Es una aplicación móvil gratuita que permite informar una situación, conocer lo que sucede cerca y recibir avisos importantes en pocos segundos.</p>
+              </div>
+
               <div className="rounded-2xl bg-slate-900 p-3">
                 <p className="font-bold text-white">📱 ¿Cómo enviar un reporte?</p>
-                <p className="mt-1">Elegí qué está pasando, describí brevemente la situación y obtené tu ubicación. Si es seguro, también podés adjuntar una foto, video o audio.</p>
+                <p className="mt-1">Elegí qué está pasando, describí brevemente la situación y confirmá tu ubicación. Si es seguro, también podés adjuntar una foto, un video o un audio que ayude a comprender mejor lo ocurrido.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">⚡ ¿Qué sucede después?</p>
+                <p className="mt-1">El reporte se registra con su categoría, horario y ubicación. El sistema lo organiza, determina su importancia y lo incorpora al mapa para que la información pueda ser útil rápidamente.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">🔔 Avisos realmente importantes</p>
+                <p className="mt-1">Con las notificaciones activadas, la aplicación puede avisarte sobre delitos, accidentes, incendios, emergencias y otras situaciones relevantes cercanas. Los avisos se seleccionan según el tipo de alerta, la distancia y su importancia para evitar alarmas innecesarias.</p>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
                 <p className="font-bold text-white">📍 Ubicación y mapa</p>
-                <p className="mt-1">La ubicación permite colocar el reporte en el lugar correcto. En el mapa podés consultar situaciones recientes reportadas en la zona.</p>
+                <p className="mt-1">La ubicación permite colocar cada reporte en el lugar correcto. En el mapa podés consultar situaciones recientes de la zona y conocer rápidamente dónde están ocurriendo.</p>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
-                <p className="font-bold text-white">🔔 Alertas cercanas</p>
-                <p className="mt-1">Podés activar las notificaciones para recibir avisos de situaciones importantes cercanas a tu ubicación.</p>
+                <p className="font-bold text-white">🧠 Información organizada de forma inteligente</p>
+                <p className="mt-1">La aplicación puede analizar los datos recibidos, ordenar las alertas por prioridad y detectar varios reportes que podrían estar relacionados. Así, una serie de avisos aislados puede transformarse en una advertencia más clara para la comunidad.</p>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
                 <p className="font-bold text-white">🌦️ Alertas meteorológicas</p>
-                <p className="mt-1">El sistema también puede comunicar alertas meteorológicas oficiales amarillas y rojas cuando corresponda.</p>
+                <p className="mt-1">El sistema está preparado para incorporar y comunicar alertas meteorológicas oficiales amarillas y rojas cuando corresponda, ayudando a tomar precauciones con anticipación.</p>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
-                <p className="font-bold text-white">📄 Seguimiento</p>
-                <p className="mt-1">Desde “Mis reportes” podés consultar el estado de los reportes enviados desde este dispositivo.</p>
+                <p className="font-bold text-white">👮‍♂️🚒🏥 Una comunidad conectada</p>
+                <p className="mt-1">Cualquier vecino que tenga la aplicación, incluidos policías, bomberos o personal médico que la utilicen como integrantes de la comunidad, puede recibir en segundos un aviso cercano que resulte pertinente. Esto puede ayudar a que la información llegue antes, aunque no constituye un aviso oficial ni garantiza la intervención de un servicio.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">💊👮 Servicios cercanos</p>
+                <p className="mt-1">Desde la pantalla principal podés buscar farmacias y comisarías cercanas utilizando la ubicación del teléfono.</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">📄 Seguimiento de tus reportes</p>
+                <p className="mt-1">Desde “Mis reportes” podés consultar el estado de los avisos enviados desde este dispositivo, sin acceder a información privada de otros vecinos.</p>
               </div>
 
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-100/90">
@@ -843,6 +868,11 @@ export default function Home() {
               <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-3">
                 <p className="font-bold text-white">☎️ Ante una emergencia</p>
                 <p className="mt-1 text-slate-300">Alerta Otamendi no reemplaza a la Policía, Bomberos, emergencias médicas ni al 911. Si existe peligro inmediato, utilizá los servicios oficiales.</p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/25 p-3">
+                <p className="font-bold text-emerald-200">🇦🇷 Disponible en todo el país</p>
+                <p className="mt-1 text-slate-300">Alerta Otamendi utiliza la ubicación del teléfono para mostrar y enviar información relevante de la zona donde se encuentra cada usuario. Cuantas más personas la tengan instalada y mantengan activadas las notificaciones, mayor será su capacidad para prevenir, informar y ayudar a la comunidad.</p>
               </div>
             </div>
 
@@ -1172,7 +1202,7 @@ export default function Home() {
           </div>
           <h2 className="mt-3 text-3xl font-black leading-tight">¿Qué está pasando?</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Elegí una opción, contanos brevemente qué ves y enviá la alerta. El centro de monitoreo recibe tu ubicación automáticamente.
+            Elegí una opción, contanos brevemente qué ves y enviá la alerta. El sistema registra tu ubicación automáticamente.
           </p>
         </section>
 
