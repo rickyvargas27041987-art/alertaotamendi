@@ -1360,9 +1360,10 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-4 grid grid-cols-2 gap-3">
+        <section className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_48px] gap-3">
           <button onClick={() => (window.location.href = "/mapa")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">🗺️ Ver mapa</button>
           <button onClick={() => (window.location.href = "/mis-reportes")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">📄 Mis reportes</button>
+          <button onClick={() => (window.location.href = "/operativo")} className="flex items-center justify-center rounded-2xl border border-cyan-800/60 bg-cyan-950/30 text-lg hover:bg-cyan-900/40" aria-label="Acceso operativo" title="Acceso operativo">🛡️</button>
         </section>
 
         <footer className="py-8 text-center text-xs text-slate-600">

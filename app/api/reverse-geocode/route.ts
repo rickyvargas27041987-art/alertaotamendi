@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { getMonitorActor } from "@/lib/monitorAuth";
+import { getOperationalSession } from "@/lib/operationalAccess";
 
 export async function GET(request: Request) {
   const actor = await getMonitorActor();
-  if (!actor) {
+  const operationalSession = actor ? null : await getOperationalSession();
+  if (!actor && !operationalSession) {
     return NextResponse.json({ success: false, error: "No autorizado." }, { status: 401 });
   }
 

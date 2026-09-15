@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import PersonPatternAlerts from "../components/PersonPatternAlerts";
 import OperationalStatistics from "../components/OperationalStatistics";
+import OperationalAccessPanel from "../components/OperationalAccessPanel";
 
 const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
   ssr: false,
@@ -884,6 +885,7 @@ const [aiError, setAiError] = useState<string | null>(null);
             >
               🖥️ Mapa grande
             </a>
+            <OperationalAccessPanel />
             {currentUser?.role === "ADMIN" && (
               <a
                 href="/admin/usuarios"

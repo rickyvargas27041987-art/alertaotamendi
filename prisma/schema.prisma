@@ -208,16 +208,70 @@ model MonitoringUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  zones           UserZone[]
-  sessions        MonitorSession[]
-  auditLogs       AuditLog[]
-  assignedReports Report[]         @relation("AssignedReports")
+  zones                 UserZone[]
+  sessions              MonitorSession[]
+  auditLogs             AuditLog[]
+  assignedReports       Report[]               @relation("AssignedReports")
+  operationalCodeConfig OperationalCodeConfig?
 
   @@index([active])
   @@index([role])
   @@index([subscriptionPlan])
   @@index([subscriptionStatus])
   @@index([subscriptionEndsAt])
+}
+
+// Código temporal que cada Centro comparte con personal operativo autorizado.
+// El código visible se deriva de forma segura y nunca se guarda en texto plano.
+model OperationalCodeConfig {
+  id                Int                   @id @default(autoincrement())
+  centerKey         String                @unique
+  ownerUserId       Int?                  @unique
+  revision          Int                   @default(0)
+  rotationStartedAt DateTime              @default(now())
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  ownerUser         MonitoringUser?       @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  sessions          OperationalSession[]
+  auditLogs         OperationalAuditLog[]
+
+  @@index([updatedAt])
+}
+
+model OperationalSession {
+  id           Int                   @id @default(autoincrement())
+  configId     Int
+  tokenHash    String                @unique
+  officerName  String
+  agency       String
+  serviceType  String
+  revision     Int
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  lastAccessAt DateTime              @default(now())
+  createdAt    DateTime              @default(now())
+  config       OperationalCodeConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  auditLogs    OperationalAuditLog[]
+
+  @@index([configId, expiresAt])
+  @@index([revokedAt])
+}
+
+model OperationalAuditLog {
+  id        Int                   @id @default(autoincrement())
+  configId  Int
+  sessionId Int?
+  actorName String
+  action    String
+  details   String?
+  reportId  Int?
+  createdAt DateTime              @default(now())
+  config    OperationalCodeConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  session   OperationalSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([configId, createdAt])
+  @@index([sessionId])
+  @@index([reportId])
 }
 
 model UserZone {
