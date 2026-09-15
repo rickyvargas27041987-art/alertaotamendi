@@ -177,8 +177,18 @@ model PushSubscription {
   latitude  Float
   longitude Float
   enabled   Boolean  @default(true)
+
+  // UBICACIÓN ADMINISTRATIVA DEL USUARIO DE LA APP
+  province String?
+  district String?
+  locality String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([province, district, locality])
+  @@index([createdAt])
 }
 
 model MonitoringUser {
@@ -342,8 +352,16 @@ model FcmDevice {
   latitude  Float
   longitude Float
   enabled   Boolean  @default(true)
+
+  // UBICACIÓN ADMINISTRATIVA DEL USUARIO DE LA APP
+  province String?
+  district String?
+  locality String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([enabled])
+  @@index([province, district, locality])
+  @@index([createdAt])
 }
