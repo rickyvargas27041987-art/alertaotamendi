@@ -1104,13 +1104,28 @@ export default function Home() {
               <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-950/30 p-4">
                 <p className="font-bold text-red-200">No pudimos completar la búsqueda</p>
                 <p className="mt-1 text-sm text-slate-300">{pharmaciesError}</p>
-                <button
-                  type="button"
-                  onClick={() => void openNearbyPharmacies()}
-                  className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold"
-                >
-                  Reintentar
-                </button>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void openNearbyPharmacies()}
+                    className="rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white"
+                  >
+                    Reintentar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      window.open(
+                        "https://www.google.com/maps/search/?api=1&query=farmacias",
+                        "_blank",
+                        "noopener,noreferrer"
+                      )
+                    }
+                    className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-black text-white"
+                  >
+                    Google Maps
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1120,6 +1135,19 @@ export default function Home() {
                 <p className="mt-1 text-xs text-slate-500">
                   La búsqueda se amplió hasta {pharmacySearchRadiusKm} km.
                 </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(
+                      "https://www.google.com/maps/search/?api=1&query=farmacias",
+                      "_blank",
+                      "noopener,noreferrer"
+                    )
+                  }
+                  className="mt-3 w-full rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-black text-white"
+                >
+                  Buscar en Google Maps
+                </button>
               </div>
             )}
 
