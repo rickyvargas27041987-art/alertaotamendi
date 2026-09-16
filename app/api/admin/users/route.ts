@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const username = String(body.username ?? "").trim().toLowerCase();
   const name = String(body.name ?? "").trim();
   const password = String(body.password ?? "");
-  const role = ["ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)
+  const role = ["CENTER_ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)
     ? String(body.role)
     : "OPERATOR";
   const zones = Array.isArray(body.zones) ? body.zones : [];
@@ -58,8 +58,8 @@ export async function POST(request: Request) {
         role,
         active: true,
         billingEmail,
-        subscriptionPlan: role === "ADMIN" ? "COURTESY" : plan,
-        subscriptionStatus: role === "ADMIN" ? "ACTIVE" : subscriptionStatus,
+        subscriptionPlan: plan,
+        subscriptionStatus,
         subscriptionStartedAt,
         subscriptionEndsAt,
         subscriptionAutoRenew,
@@ -92,6 +92,9 @@ export async function PATCH(request: Request) {
 
   const current = await prisma.monitoringUser.findUnique({ where: { id } });
   if (!current) return NextResponse.json({ success: false, error: "Usuario no encontrado." }, { status: 404 });
+  if (current.role === "ADMIN" && (body.role && body.role !== "ADMIN" || body.active === false)) {
+    return NextResponse.json({ success: false, error: "El superadministrador no puede perder su rol ni ser desactivado desde esta pantalla." }, { status: 400 });
+  }
 
   const data: any = {};
   const changingPrices = "monthlyPrice" in body || "annualPrice" in body;
@@ -105,10 +108,10 @@ export async function PATCH(request: Request) {
   }
   if (typeof body.active === "boolean") data.active = body.active;
   if ("role" in body) {
-    if (!["ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)) {
+    if (current.role !== "ADMIN" && !["CENTER_ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)) {
       return NextResponse.json({ success: false, error: "Rol inválido." }, { status: 400 });
     }
-    data.role = body.role;
+    if (current.role !== "ADMIN") data.role = body.role;
   }
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
   if (typeof body.password === "string" && body.password.length >= 8) data.passwordHash = hashPassword(body.password);

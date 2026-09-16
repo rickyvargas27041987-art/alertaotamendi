@@ -30,8 +30,7 @@ function zoneMatches(report: OperationalReport, zones: OperationalZone[]) {
   );
 }
 
-export async function notifyOperationalResponders(report: OperationalReport) {
-  const services = SERVICE_ROUTING[report.category] ?? [];
+async function notifyServices(report: OperationalReport, services: ServiceType[], preventive = false) {
   if (!services.length || !report.province || !report.district) return;
 
   try {
@@ -56,7 +55,9 @@ export async function notifyOperationalResponders(report: OperationalReport) {
     const area = [report.locality, report.district].filter(Boolean).join(" · ");
     await Promise.allSettled(recipients.map(async (item) => {
       const result = await sendWebPush(item, {
-        title: `🚨 ${report.category === "Delito / Robo" ? "Hurto / Robo" : report.category} · aviso operativo`,
+        title: preventive
+          ? "⚠️ Patrón preventivo detectado"
+          : `🚨 ${report.category === "Delito / Robo" ? "Hurto / Robo" : report.category} · aviso operativo`,
         body: `${area || "Jurisdicción asignada"}: ${report.description.slice(0, 180)}`,
         url: `/operativo?report=${report.id}`,
         tag: `operational-report-${report.id}`,
@@ -72,4 +73,12 @@ export async function notifyOperationalResponders(report: OperationalReport) {
     // Un fallo de notificación nunca debe impedir que el reporte se guarde.
     console.error("No se pudieron enviar avisos al personal operativo:", error);
   }
+}
+
+export async function notifyOperationalResponders(report: OperationalReport) {
+  return notifyServices(report, SERVICE_ROUTING[report.category] ?? []);
+}
+
+export async function notifyPreventivePolice(report: OperationalReport) {
+  return notifyServices(report, ["POLICE"], true);
 }

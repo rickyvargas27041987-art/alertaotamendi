@@ -229,6 +229,7 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("todos");
   const [categoryFilter, setCategoryFilter] = useState("todas");
   const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
+  const [onlyUnassignedJurisdiction, setOnlyUnassignedJurisdiction] = useState(false);
   const [listLimit, setListLimit] = useState(12);
   const [vehicleWatches, setVehicleWatches] = useState<VehicleWatch[]>([]);
   const [vehicleWatchLoading, setVehicleWatchLoading] = useState(false);
@@ -661,6 +662,7 @@ const [aiError, setAiError] = useState<string | null>(null);
       critical: reports.filter((r) => esActiva(r.status) && esCritica(r.category)).length,
       high: reports.filter((r) => esActiva(r.status) && esAlta(r.category)).length,
       normal: reports.filter((r) => esActiva(r.status) && esNormal(r.category)).length,
+      unassignedJurisdiction: reports.filter((r) => !r.province || !r.district).length,
     };
   }, [reports]);
 
@@ -713,6 +715,7 @@ const [aiError, setAiError] = useState<string | null>(null);
     return reports.filter((report) => {
       if (emergencyMode && !["critical", "high"].includes(reportPriority(report))) return false;
       if (onlyUnreviewed && !alertasCriticasPendientes.includes(report.id)) return false;
+      if (onlyUnassignedJurisdiction && report.province && report.district) return false;
       if (statusFilter !== "todos" && report.status !== statusFilter) return false;
       if (categoryFilter !== "todas" && report.category !== categoryFilter) return false;
       if (!term) return true;
@@ -728,7 +731,7 @@ const [aiError, setAiError] = useState<string | null>(null);
         (report.description ?? "").toLowerCase().includes(term)
       );
     });
-  }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, alertasCriticasPendientes, emergencyMode]);
+  }, [reports, search, statusFilter, categoryFilter, onlyUnreviewed, onlyUnassignedJurisdiction, alertasCriticasPendientes, emergencyMode]);
 
   const historyReports = useMemo(() => {
     const term = historySearch.trim().toLowerCase();
@@ -1179,6 +1182,20 @@ const [aiError, setAiError] = useState<string | null>(null);
             {currentUser?.role === "ADMIN" && <AppUserStatistics />}
           </aside>
         </section>
+
+        {currentUser?.role === "ADMIN" && totals.unassignedJurisdiction > 0 && (
+          <button
+            onClick={() => {
+              setOnlyUnassignedJurisdiction((value) => !value);
+              setOnlyUnreviewed(false);
+              window.setTimeout(() => document.getElementById("alert-list")?.scrollIntoView({ behavior: "smooth" }), 30);
+            }}
+            className="mb-3 w-full rounded-2xl border border-amber-500/40 bg-amber-950/30 p-4 text-left text-amber-100 hover:bg-amber-950/50"
+          >
+            <span className="font-black">⚠️ {totals.unassignedJurisdiction} alerta(s) sin jurisdicción</span>
+            <span className="ml-2 text-sm text-amber-200/70">{onlyUnassignedJurisdiction ? "Mostrar todas" : "Revisar ahora"}</span>
+          </button>
+        )}
 
         <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
           {[

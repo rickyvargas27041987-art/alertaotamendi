@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createUserSession, monitorSessionCookie, verifyPassword } from "@/lib/monitorAuth";
+import { createLegacyAdminToken, createUserSession, monitorSessionCookie, verifyPassword } from "@/lib/monitorAuth";
 import { subscriptionHasAccess } from "@/lib/subscription";
+import { consumeRateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: Request) {
   try {
+    if (!(await consumeRateLimit(request, "monitor-login", 10, 15 * 60))) {
+      return NextResponse.json(
+        { success: false, error: "Demasiados intentos. Esperá 15 minutos antes de volver a probar." },
+        { status: 429, headers: { "Retry-After": "900" } }
+      );
+    }
     const { username, password } = await request.json();
     const cleanPassword = String(password ?? "");
     const cleanUsername = String(username ?? "").trim().toLowerCase();
@@ -14,7 +21,7 @@ export async function POST(request: Request) {
     const sessionSecret = process.env.ADMIN_SESSION_SECRET;
     if ((!cleanUsername || cleanUsername === "admin") && adminPassword && sessionSecret && cleanPassword === adminPassword) {
       const response = NextResponse.json({ success: true, role: "ADMIN", legacy: true });
-      response.cookies.set("admin_session", sessionSecret, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: 60 * 60 * 8, path: "/" });
+      response.cookies.set("admin_session", createLegacyAdminToken(sessionSecret), { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: 60 * 60 * 8, path: "/" });
       return response;
     }
 

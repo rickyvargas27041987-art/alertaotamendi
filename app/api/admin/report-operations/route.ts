@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { audit, canOperateReport, getMonitorActor } from "@/lib/monitorAuth";
+import { audit, canOperateReport, canOverrideAssignments, getMonitorActor } from "@/lib/monitorAuth";
 
 export async function GET(request: Request) {
   const actor = await getMonitorActor();
@@ -57,7 +57,7 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "claim") {
-    if (report.assignedToId && report.assignedToId !== actor.id && actor.role !== "ADMIN") {
+    if (report.assignedToId && report.assignedToId !== actor.id && !canOverrideAssignments(actor)) {
       return NextResponse.json({ success: false, error: "Otro operador ya tomó esta alerta." }, { status: 409 });
     }
     const updated = await prisma.report.update({
@@ -75,7 +75,7 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "release") {
-    if (report.assignedToId && report.assignedToId !== actor.id && actor.role !== "ADMIN") {
+    if (report.assignedToId && report.assignedToId !== actor.id && !canOverrideAssignments(actor)) {
       return NextResponse.json({ success: false, error: "Solo el operador asignado o un administrador puede liberarla." }, { status: 403 });
     }
     const updated = await prisma.report.update({

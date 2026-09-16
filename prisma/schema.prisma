@@ -382,3 +382,15 @@ model FcmDevice {
   @@index([province, district, locality])
   @@index([createdAt])
 }
+
+// Límites compartidos entre instancias de Vercel. La clave se guarda como hash,
+// nunca como dirección IP en texto plano.
+model RequestRateLimit {
+  key         String   @id
+  count       Int      @default(1)
+  windowStart DateTime @default(now())
+  expiresAt   DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@index([expiresAt])
+}

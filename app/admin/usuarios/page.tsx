@@ -47,7 +47,8 @@ const statusLabel: Record<string, string> = {
   CANCELED: "Cancelada",
 };
 const roleLabel: Record<string, string> = {
-  ADMIN: "Administrador",
+  ADMIN: "Superadministrador",
+  CENTER_ADMIN: "Administrador del centro",
   OPERATOR: "Operador",
   INSTITUTIONAL: "Consulta institucional",
 };
@@ -157,9 +158,10 @@ function UserAccessEditor({
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-sm text-slate-300">Rol
           <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
+            {user.role === "ADMIN" && <option value="ADMIN">Superadministrador</option>}
             <option value="OPERATOR">Operador</option>
             <option value="INSTITUTIONAL">Consulta institucional (civil)</option>
-            <option value="ADMIN">Administrador</option>
+            <option value="CENTER_ADMIN">Administrador del centro</option>
           </select>
         </label>
         <label className="text-sm text-slate-300">Provincia
@@ -435,7 +437,7 @@ export default function UsuariosPage() {
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
                 <option value="OPERATOR">Operador</option>
                 <option value="INSTITUTIONAL">Consulta institucional (civil)</option>
-                <option value="ADMIN">Administrador</option>
+                <option value="CENTER_ADMIN">Administrador del centro</option>
               </select>
             </label>
             <label className="mt-4 block text-sm">Plan inicial

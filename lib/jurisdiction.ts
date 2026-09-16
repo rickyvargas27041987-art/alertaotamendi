@@ -19,7 +19,10 @@ export async function resolveJurisdiction(
     url.searchParams.set("lat", String(latitude));
     url.searchParams.set("lon", String(longitude));
 
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
     if (!response.ok) return EMPTY_JURISDICTION;
 
     const data = await response.json();

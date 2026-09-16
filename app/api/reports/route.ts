@@ -1,11 +1,16 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { audit, canOperateReport, canViewReport, getMonitorActor } from "@/lib/monitorAuth";
-import { notifyOperationalResponders } from "@/lib/operationalNotifications";
+import { notifyOperationalResponders, notifyPreventivePolice } from "@/lib/operationalNotifications";
 import {
   calcularDistanciaKm,
   sendWebPush,
 } from "@/lib/webPush";
+import { sendFcmNotification } from "@/lib/fcm";
+import { resolveJurisdiction } from "@/lib/jurisdiction";
+import { consumeRateLimit } from "@/lib/rateLimit";
+
+export const maxDuration = 60;
 
 /* =========================================================
    CONFIGURACIÓN
@@ -22,6 +27,19 @@ const VALID_CATEGORIES = [
 
 type ValidCategory =
   (typeof VALID_CATEGORIES)[number];
+
+function validMediaUrl(value: string | null) {
+  if (!value) return true;
+  try {
+    const media = new URL(value);
+    const supabase = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "https://invalid.local");
+    return media.protocol === "https:" &&
+      media.host === supabase.host &&
+      media.pathname.includes("/storage/v1/object/public/alertas/");
+  } catch {
+    return false;
+  }
+}
 
 const PUSH_RADIUS_KM = 5;
 
@@ -48,23 +66,6 @@ const VALID_STATUSES = [
 /* =========================================================
    ADMIN
 ========================================================= */
-
-async function resolveJurisdiction(latitude: number, longitude: number) {
-  try {
-    const url = `https://apis.datos.gob.ar/georef/api/ubicacion?lat=${latitude}&lon=${longitude}`;
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) return { province: null, district: null, locality: null };
-    const data = await response.json();
-    const u = data?.ubicacion;
-    return {
-      province: u?.provincia?.nombre ?? null,
-      district: u?.municipio?.nombre ?? u?.departamento?.nombre ?? null,
-      locality: u?.localidad?.nombre ?? null,
-    };
-  } catch {
-    return { province: null, district: null, locality: null };
-  }
-}
 
 /* =========================================================
    PRIVACIDAD MAPA PÚBLICO
@@ -183,22 +184,16 @@ async function notifyNearbyReport(
      * Buscamos solamente dispositivos
      * que tienen las alertas activadas.
      */
-    const subscriptions =
-      await prisma.pushSubscription.findMany(
-        {
-          where: {
-            enabled: true,
-          },
-        }
-      );
+    const [subscriptions, fcmDevices] = await Promise.all([
+      prisma.pushSubscription.findMany({ where: { enabled: true } }),
+      prisma.fcmDevice.findMany({ where: { enabled: true } }),
+    ]);
 
     console.log(
       `[PUSH] Reporte #${report.id}: ${subscriptions.length} suscripciones activas.`
     );
 
-    if (
-      subscriptions.length === 0
-    ) {
+    if (subscriptions.length === 0 && fcmDevices.length === 0) {
       console.log(
         `[PUSH] No hay dispositivos suscriptos.`
       );
@@ -241,7 +236,19 @@ async function notifyNearbyReport(
       `[PUSH] ${nearby.length} de ${subscriptions.length} dispositivos están dentro de ${PUSH_RADIUS_KM} km.`
     );
 
-    if (nearby.length === 0) {
+    const nearbyFcm = fcmDevices
+      .map((device) => ({
+        device,
+        distance: calcularDistanciaKm(
+          device.latitude,
+          device.longitude,
+          report.latitude!,
+          report.longitude!
+        ),
+      }))
+      .filter(({ distance }) => Number.isFinite(distance) && distance <= PUSH_RADIUS_KM);
+
+    if (nearby.length === 0 && nearbyFcm.length === 0) {
       return;
     }
 
@@ -398,6 +405,28 @@ async function notifyNearbyReport(
         )
       );
 
+    const fcmResults = await Promise.all(
+      nearbyFcm.map(async ({ device, distance }) => {
+        try {
+          const result = await sendFcmNotification(device.token, {
+            title,
+            body: `${displayCategory(report.category)} reportado a aproximadamente ${distance.toFixed(1)} km de tu ubicación.`,
+            url: "/mapa",
+            tag: `report-${report.id}`,
+            reportId: report.id,
+            priority,
+          });
+          if (result.invalidToken) {
+            await prisma.fcmDevice.update({ where: { id: device.id }, data: { enabled: false } });
+          }
+          return result;
+        } catch (error) {
+          console.error(`[FCM] Excepción dispositivo ${device.id}:`, error);
+          return { ok: false, invalidToken: false, configured: true, status: 500 };
+        }
+      })
+    );
+
     const success =
       results.filter(
         (result) => result.ok
@@ -415,7 +444,7 @@ async function notifyNearbyReport(
       expired;
 
     console.log(
-      `[PUSH] Resultado reporte #${report.id}: ${success} enviados, ${failed} fallidos, ${expired} vencidos.`
+      `[PUSH] Resultado reporte #${report.id}: web ${success} enviados, ${failed} fallidos, ${expired} vencidos; Android ${fcmResults.filter((item) => item.ok).length}/${fcmResults.length}.`
     );
   } catch (error) {
     console.error(
@@ -454,7 +483,10 @@ async function sendPreventivePush(alert: {
   id: number; category: string; centerLatitude: number | null; centerLongitude: number | null;
 }) {
   if (alert.centerLatitude === null || alert.centerLongitude === null) return;
-  const subscriptions = await prisma.pushSubscription.findMany({ where: { enabled: true } });
+  const [subscriptions, fcmDevices] = await Promise.all([
+    prisma.pushSubscription.findMany({ where: { enabled: true } }),
+    prisma.fcmDevice.findMany({ where: { enabled: true } }),
+  ]);
   const nearby = subscriptions.filter((subscription) =>
     calcularDistanciaKm(subscription.latitude, subscription.longitude, alert.centerLatitude!, alert.centerLongitude!) <= PUSH_RADIUS_KM
   );
@@ -478,10 +510,31 @@ async function sendPreventivePush(alert: {
       console.error(`[PUSH] Error en alerta preventiva #${alert.id}:`, error);
     }
   }));
+
+  const nearbyFcm = fcmDevices.filter((device) =>
+    calcularDistanciaKm(device.latitude, device.longitude, alert.centerLatitude!, alert.centerLongitude!) <= PUSH_RADIUS_KM
+  );
+  await Promise.all(nearbyFcm.map(async (device) => {
+    try {
+      const result = await sendFcmNotification(device.token, {
+        title: "⚠️ AVISO PREVENTIVO EN LA ZONA",
+        body: "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector.",
+        url: "/mapa",
+        tag: `preventive-${alert.id}`,
+        priority: "normal",
+      });
+      if (result.invalidToken) {
+        await prisma.fcmDevice.update({ where: { id: device.id }, data: { enabled: false } });
+      }
+    } catch (error) {
+      console.error(`[FCM] Error en alerta preventiva #${alert.id}:`, error);
+    }
+  }));
 }
 
 async function evaluateSuspiciousPattern(report: {
   id: number; category: string; description: string; latitude: number | null; longitude: number | null; createdAt: Date;
+  province?: string | null; district?: string | null; locality?: string | null;
 }) {
   if (report.latitude === null || report.longitude === null) return;
   const since = new Date(report.createdAt.getTime() - PREVENTIVE_WINDOW_MINUTES * 60 * 1000);
@@ -552,6 +605,14 @@ async function evaluateSuspiciousPattern(report: {
   // Un solo beep/push al nacer la alerta preventiva; los reportes posteriores se agrupan sin repetir aviso.
   if (isNew && !preventiveAlert.notificationSentAt) {
     await sendPreventivePush(preventiveAlert);
+    await notifyPreventivePolice({
+      id: report.id,
+      category: report.category,
+      description: preventiveAlert.summary,
+      province: report.province ?? null,
+      district: report.district ?? null,
+      locality: report.locality ?? null,
+    });
     await prisma.personPatternAlert.update({ where: { id: preventiveAlert.id }, data: { notificationSentAt: new Date() } });
   }
 }
@@ -627,6 +688,10 @@ export async function GET() {
     const reports =
       await prisma.report.findMany(
         {
+          where: {
+            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+            status: { notIn: ["resuelta", "descartada"] },
+          },
           orderBy: {
             createdAt: "desc",
           },
@@ -696,6 +761,12 @@ export async function POST(
   request: Request
 ) {
   try {
+    if (!(await consumeRateLimit(request, "public-report", 8, 10 * 60))) {
+      return NextResponse.json(
+        { success: false, message: "Se enviaron demasiadas alertas desde este dispositivo. Esperá unos minutos o llamá al 911 si existe peligro inmediato." },
+        { status: 429, headers: { "Retry-After": "600" } }
+      );
+    }
     const body =
       await request.json();
 
@@ -749,6 +820,13 @@ export async function POST(
       body.audioUrl.trim()
         ? body.audioUrl.trim()
         : null;
+
+    if (![imageUrl, videoUrl, audioUrl].every(validMediaUrl)) {
+      return NextResponse.json(
+        { success: false, message: "Uno de los archivos adjuntos no pertenece al almacenamiento autorizado." },
+        { status: 400 }
+      );
+    }
 
     /* -----------------------------------------------------
        VALIDACIÓN CATEGORÍA
@@ -827,8 +905,6 @@ export async function POST(
        GUARDAR REPORTE
     ----------------------------------------------------- */
 
-    const jurisdiction = await resolveJurisdiction(latitude, longitude);
-
     const newReport =
       await prisma.report.create(
         {
@@ -845,9 +921,9 @@ export async function POST(
             imageUrl,
             videoUrl,
             audioUrl,
-            province: jurisdiction.province,
-            district: jurisdiction.district,
-            locality: jurisdiction.locality,
+            province: null,
+            district: null,
+            locality: null,
           },
         }
       );
@@ -856,58 +932,54 @@ export async function POST(
       `[REPORT] Nueva alerta #${newReport.id} · ${newReport.category}`
     );
 
-    /*
-     * ANÁLISIS IA AUTOMÁTICO
-     * El reporte queda analizado antes de aparecer en el Centro de Monitoreo.
-     * Si OpenAI falla, la alerta igualmente se conserva y continúa el flujo normal.
-     */
-    try {
-      const internalSecret = process.env.ADMIN_SESSION_SECRET;
-      if (internalSecret && process.env.OPENAI_API_KEY) {
-        const origin = new URL(request.url).origin;
-        const aiResponse = await fetch(`${origin}/api/ai/analyze-report`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-alerta-internal-secret": internalSecret,
-          },
-          body: JSON.stringify({ reportId: newReport.id }),
-          cache: "no-store",
+    const origin = new URL(request.url).origin;
+
+    // La respuesta al vecino no espera geocodificación, IA ni notificaciones.
+    // Next/Vercel mantiene viva la tarea para completar el procesamiento posterior.
+    after(async () => {
+      try {
+        let jurisdiction = await resolveJurisdiction(latitude, longitude);
+        if (!jurisdiction.province || !jurisdiction.district) {
+          await new Promise((resolve) => setTimeout(resolve, 750));
+          jurisdiction = await resolveJurisdiction(latitude, longitude);
+        }
+        const enrichedReport = await prisma.report.update({
+          where: { id: newReport.id },
+          data: jurisdiction,
         });
 
-        if (!aiResponse.ok) {
-          console.error(`[AI AUTO] No se pudo analizar reporte #${newReport.id}:`, await aiResponse.text());
-        } else {
-          console.log(`[AI AUTO] Reporte #${newReport.id} analizado automáticamente.`);
+        const tasks: Promise<unknown>[] = [];
+        const internalSecret = process.env.ADMIN_SESSION_SECRET;
+        if (internalSecret && process.env.OPENAI_API_KEY) {
+          tasks.push(
+            fetch(`${origin}/api/ai/analyze-report`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-alerta-internal-secret": internalSecret,
+              },
+              body: JSON.stringify({ reportId: newReport.id }),
+              cache: "no-store",
+              signal: AbortSignal.timeout(45_000),
+            }).then(async (response) => {
+              if (!response.ok) {
+                console.error(`[AI AUTO] Reporte #${newReport.id}:`, (await response.text()).slice(0, 800));
+              }
+            })
+          );
         }
-      } else {
-        console.warn("[AI AUTO] Falta OPENAI_API_KEY o ADMIN_SESSION_SECRET.");
+
+        if (enrichedReport.category === "Persona sospechosa" || enrichedReport.category === "Vehículo sospechoso") {
+          tasks.push(evaluateSuspiciousPattern(enrichedReport));
+        } else {
+          tasks.push(notifyNearbyReport(enrichedReport));
+        }
+        tasks.push(notifyOperationalResponders(enrichedReport));
+        await Promise.allSettled(tasks);
+      } catch (error) {
+        console.error(`[REPORT] Falló el procesamiento posterior de #${newReport.id}:`, error);
       }
-    } catch (error) {
-      console.error(`[AI AUTO] Error automático en reporte #${newReport.id}:`, error);
-    }
-
-    /*
-     * Notificamos dispositivos dentro
-     * del radio de 10 km.
-     *
-     * Esperamos el resultado para que
-     * Vercel no finalice la función
-     * antes de terminar los pushes.
-     */
-    // Persona/Vehículo sospechoso NO generan push individual.
-    // Recién se avisa cuando 3 reportes distintos forman una alerta preventiva.
-    if (
-      newReport.category !== "Persona sospechosa" &&
-      newReport.category !== "Vehículo sospechoso"
-    ) {
-      await notifyNearbyReport(newReport);
-    } else {
-      await evaluateSuspiciousPattern(newReport);
-    }
-
-    // Aviso dirigido por servicio y jurisdicción al personal operativo habilitado.
-    await notifyOperationalResponders(newReport);
+    });
 
     return NextResponse.json(
       {

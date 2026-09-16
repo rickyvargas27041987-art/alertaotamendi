@@ -372,6 +372,17 @@ export default function Home() {
   async function disableNotifications() {
     setNotificationBusy(true);
     try {
+      if (hasNativeAndroidBridge()) {
+        const token = await getNativeFcmToken().catch(() => "");
+        if (token) {
+          await fetch("/api/fcm/unsubscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          }).catch(() => undefined);
+        }
+      }
+
       if ("serviceWorker" in navigator) {
         const registration = await navigator.serviceWorker.getRegistration();
         const subscription = await registration?.pushManager.getSubscription();
@@ -700,14 +711,30 @@ export default function Home() {
   }
 
   async function uploadMedia(file: File, folder: string) {
-    const extension = file.name.split(".").pop() || "bin";
-    const fileName = `${folder}/${crypto.randomUUID()}.${extension}`;
-    const { error } = await supabase.storage.from("alertas").upload(fileName, file, {
-      contentType: file.type || undefined,
-      upsert: false,
+    const authorization = await fetch("/api/media/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folder,
+        fileName: file.name,
+        contentType: file.type,
+        size: file.size,
+      }),
     });
+    const permission = await authorization.json().catch(() => null);
+    if (!authorization.ok || !permission?.success) {
+      throw new Error(permission?.error || "No se pudo autorizar la subida.");
+    }
+    const { error } = await supabase.storage.from("alertas").uploadToSignedUrl(
+      permission.path,
+      permission.token,
+      file,
+      {
+      contentType: file.type || undefined,
+      }
+    );
     if (error) throw error;
-    return supabase.storage.from("alertas").getPublicUrl(fileName).data.publicUrl;
+    return String(permission.publicUrl);
   }
 
   async function sendReport() {

@@ -178,7 +178,7 @@ export async function GET() {
     }
     if (!canManageCenter(actor)) return NextResponse.json({ success: false, error: "El perfil institucional no tiene acceso a seguimientos." }, { status: 403 });
 
-    const vehicles =
+    const allVehicles =
       await prisma.vehicleWatch.findMany({
         where: {
           active: true,
@@ -188,6 +188,32 @@ export async function GET() {
           createdAt: "desc",
         },
       });
+
+    let vehicles = allVehicles;
+    if (actor.role !== "ADMIN" && allVehicles.length) {
+      const watchIds = allVehicles.map((vehicle) => vehicle.id);
+      const matches = await prisma.vehicleMatch.findMany({
+        where: { vehicleWatchId: { in: watchIds } },
+        select: { vehicleWatchId: true, reportId: true },
+      });
+      const reportIds = Array.from(new Set([
+        ...allVehicles.map((vehicle) => vehicle.sourceReportId),
+        ...matches.map((match) => match.reportId),
+      ]));
+      const reports = await prisma.report.findMany({
+        where: { id: { in: reportIds } },
+        select: { id: true, province: true, district: true, locality: true },
+      });
+      const visibleReportIds = new Set(
+        reports.filter((report) => canOperateReport(actor, report)).map((report) => report.id)
+      );
+      const visibleWatchIds = new Set(
+        matches.filter((match) => visibleReportIds.has(match.reportId)).map((match) => match.vehicleWatchId)
+      );
+      vehicles = allVehicles.filter((vehicle) =>
+        visibleReportIds.has(vehicle.sourceReportId) || visibleWatchIds.has(vehicle.id)
+      );
+    }
 
     return NextResponse.json({
       success: true,

@@ -9,6 +9,12 @@ type OverpassElement = {
   tags?: Record<string, string>;
 };
 
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+] as const;
+
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -29,31 +35,56 @@ function buildAddress(tags: Record<string, string>) {
   return [firstLine, city].filter(Boolean).join(", ") || null;
 }
 
-async function searchPoliceStations(lat: number, lon: number, radiusMeters: number) {
-  const query = `
-[out:json][timeout:20];
+function buildQuery(lat: number, lon: number, radiusMeters: number) {
+  return `
+[out:json][timeout:8];
 (
-  node["amenity"="police"](around:${radiusMeters},${lat},${lon});
-  way["amenity"="police"](around:${radiusMeters},${lat},${lon});
-  relation["amenity"="police"](around:${radiusMeters},${lat},${lon});
+  nwr["amenity"="police"](around:${radiusMeters},${lat},${lon});
+  nwr["office"="government"]["government"="police"](around:${radiusMeters},${lat},${lon});
 );
 out center tags;
 `;
+}
 
-  const response = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      "User-Agent": "Alerta-Otamendi/1.0",
-    },
-    body: new URLSearchParams({ data: query }),
-    cache: "no-store",
-  });
+async function requestOverpass(endpoint: string, query: string, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "User-Agent": "Alerta-Otamendi/1.0",
+      },
+      body: new URLSearchParams({ data: query }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Servidor respondió ${response.status}.`);
+    const data = await response.json();
+    return Array.isArray(data.elements) ? data.elements as OverpassElement[] : [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-  if (!response.ok) throw new Error("El servicio de mapas no respondió correctamente.");
+async function fetchOverpassElements(query: string) {
+  try {
+    return await requestOverpass(OVERPASS_ENDPOINTS[0], query, 4500);
+  } catch (error) {
+    console.warn("Servidor principal de comisarías no disponible:", error);
+  }
+  try {
+    return await Promise.any(
+      OVERPASS_ENDPOINTS.slice(1).map((endpoint) => requestOverpass(endpoint, query, 7000))
+    );
+  } catch {
+    throw new Error("Ningún servidor de mapas respondió a tiempo.");
+  }
+}
 
-  const data = await response.json();
-  const elements: OverpassElement[] = Array.isArray(data.elements) ? data.elements : [];
+async function searchPoliceStations(lat: number, lon: number, radiusMeters: number) {
+  const elements = await fetchOverpassElements(buildQuery(lat, lon, radiusMeters));
 
   return elements
     .map((element) => {
@@ -98,8 +129,8 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Error buscando comisarías:", error);
     return NextResponse.json(
-      { success: false, message: "No se pudieron consultar las comisarías en este momento." },
-      { status: 500 }
+      { success: false, message: "El servicio de mapas no respondió. Podés reintentar o buscar en Google Maps." },
+      { status: 503 }
     );
   }
 }

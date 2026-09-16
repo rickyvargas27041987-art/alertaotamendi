@@ -7,6 +7,9 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && node --test tests/*.test.mjs",
+    "check": "npm run lint && npm test && npm run build",
     "postinstall": "prisma skills sync || exit 0"
   },
   "dependencies": {

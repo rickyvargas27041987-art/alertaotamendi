@@ -13,31 +13,12 @@ import {
   type ServiceType,
 } from "@/lib/operationalAccess";
 import { subscriptionHasAccess } from "@/lib/subscription";
+import { consumeRateLimit } from "@/lib/rateLimit";
 
-type Attempt = { count: number; resetAt: number };
-const attempts = new Map<string, Attempt>();
 const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60 * 1000;
-
-function requestKey(request: Request) {
-  return (request.headers.get("x-forwarded-for")?.split(",")[0] || request.headers.get("x-real-ip") || "unknown").trim();
-}
-
-function consumeAttempt(key: string) {
-  const now = Date.now();
-  const current = attempts.get(key);
-  if (!current || current.resetAt <= now) {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-  if (current.count >= MAX_ATTEMPTS) return false;
-  current.count += 1;
-  return true;
-}
 
 export async function POST(request: Request) {
-  const key = requestKey(request);
-  if (!consumeAttempt(key)) {
+  if (!(await consumeRateLimit(request, "operational-access", MAX_ATTEMPTS, 15 * 60))) {
     return NextResponse.json({ success: false, error: "Demasiados intentos. Esperá 15 minutos." }, { status: 429 });
   }
 
@@ -81,7 +62,6 @@ export async function POST(request: Request) {
         expiresAt: current.expiresAt,
       },
     });
-    attempts.delete(key);
     await operationalAudit(config.id, officerName, "OPERATIONAL_ACCESS_GRANTED", {
       sessionId: session.id,
       details: `${agency} · ${serviceType}`,

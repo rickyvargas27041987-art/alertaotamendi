@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { subscriptionHasAccess } from "@/lib/subscription";
 
@@ -8,7 +8,7 @@ export type MonitorActor = {
   id: number | null;
   username: string;
   name: string;
-  role: "ADMIN" | "OPERATOR" | "INSTITUTIONAL";
+  role: "ADMIN" | "CENTER_ADMIN" | "OPERATOR" | "INSTITUTIONAL";
   zones: Array<{ province: string; district: string; locality: string | null }>;
   subscription?: {
     plan: string;
@@ -21,6 +21,29 @@ export type MonitorActor = {
 
 const SESSION_COOKIE = "monitor_session";
 const SESSION_HOURS = 8;
+
+export function createLegacyAdminToken(secret: string) {
+  const payload = Buffer.from(JSON.stringify({
+    exp: Date.now() + SESSION_HOURS * 60 * 60 * 1000,
+    nonce: randomBytes(16).toString("base64url"),
+  })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function verifyLegacyAdminToken(token: string, secret: string) {
+  try {
+    const [payload, signature] = token.split(".");
+    if (!payload || !signature) return false;
+    const expected = createHmac("sha256", secret).update(payload).digest();
+    const received = Buffer.from(signature, "base64url");
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) return false;
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: number };
+    return Number.isFinite(data.exp) && Number(data.exp) > Date.now();
+  } catch {
+    return false;
+  }
+}
 
 export function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -56,7 +79,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
   const store = await cookies();
   const legacy = store.get("admin_session")?.value;
   const legacySecret = process.env.ADMIN_SESSION_SECRET;
-  if (legacy && legacySecret && legacy === legacySecret) {
+  if (legacy && legacySecret && verifyLegacyAdminToken(legacy, legacySecret)) {
     return { kind: "legacy_admin", id: null, username: "admin", name: "Administrador", role: "ADMIN", zones: [], subscription: { plan: "COURTESY", status: "ACTIVE", endsAt: null, autoRenew: false, mpStatus: null } };
   }
 
@@ -73,7 +96,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
     id: session.user.id,
     username: session.user.username,
     name: session.user.name,
-    role: session.user.role as "ADMIN" | "OPERATOR" | "INSTITUTIONAL",
+    role: session.user.role as MonitorActor["role"],
     zones: session.user.zones.map(z => ({ province: z.province, district: z.district, locality: z.locality })),
     subscription: {
       plan: session.user.subscriptionPlan,
@@ -105,7 +128,11 @@ export function canOperateReport(actor: MonitorActor, report: { province: string
 }
 
 export function canManageCenter(actor: MonitorActor) {
-  return actor.role === "ADMIN" || actor.role === "OPERATOR";
+  return actor.role === "ADMIN" || actor.role === "CENTER_ADMIN" || actor.role === "OPERATOR";
+}
+
+export function canOverrideAssignments(actor: MonitorActor) {
+  return actor.role === "ADMIN" || actor.role === "CENTER_ADMIN";
 }
 
 export async function audit(actor: MonitorActor, action: string, details?: string, reportId?: number) {
