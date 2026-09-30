@@ -32,7 +32,11 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin");
+      const isMonitoringDomain =
+        typeof window !== "undefined" &&
+        window.location.hostname === "monitoreo.alertaotamendi.com";
+
+      router.push(isMonitoringDomain ? "/" : "/admin");
       router.refresh();
     } catch {
       setError(
