@@ -1458,7 +1458,7 @@ export default function MapaAlertasLeaflet({
                   className="rounded-xl border border-violet-500/50 bg-violet-950/30 px-3 py-2 text-[11px] font-black text-violet-200 hover:bg-violet-900/50"
                   title="Abrir historial, estadísticas y zonas calientes"
                 >
-                  📋 Historial
+                  📊 Historial / Estadísticas
                 </button>
               )}
             </div>

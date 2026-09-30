@@ -1051,7 +1051,7 @@ const [aiError, setAiError] = useState<string | null>(null);
             />
           </div>
 
-          <aside className="min-w-0 space-y-3 xl:max-h-[calc(100vh-175px)] xl:overflow-y-auto xl:pr-1">
+          <aside className="min-w-0 space-y-3">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
