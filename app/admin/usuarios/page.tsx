@@ -13,6 +13,7 @@ type User = {
   username: string;
   name: string;
   role: string;
+  organizationType: string;
   active: boolean;
   lastLoginAt: string | null;
   zones: Zone[];
@@ -53,6 +54,30 @@ const roleLabel: Record<string, string> = {
   INSTITUTIONAL: "Consulta institucional",
 };
 
+const organizationLabel: Record<string, string> = {
+  POLICE: "Policía",
+  FIRE: "Bomberos",
+  MEDICAL: "Salud / Emergencias médicas",
+  CIVIL_DEFENSE: "Defensa Civil",
+  MUNICIPAL: "Municipio / Centro de Monitoreo",
+};
+
+const organizationIcon: Record<string, string> = {
+  POLICE: "🚓",
+  FIRE: "🚒",
+  MEDICAL: "🚑",
+  CIVIL_DEFENSE: "🛡️",
+  MUNICIPAL: "🏛️",
+};
+
+const organizationPermissions: Record<string, string[]> = {
+  POLICE: ["Hurto / Robo", "Personas sospechosas", "Vehículos sospechosos", "Accidentes", "Emergencias"],
+  FIRE: ["Incendios", "Accidentes", "Emergencias"],
+  MEDICAL: ["Accidentes", "Emergencias"],
+  CIVIL_DEFENSE: ["Defensa Civil", "Incendios", "Accidentes", "Emergencias"],
+  MUNICIPAL: ["Todas las categorías"],
+};
+
 function statusClass(status: string) {
   if (status === "ACTIVE") return "bg-emerald-500/10 text-emerald-300 border-emerald-500/30";
   if (status === "PENDING") return "bg-amber-500/10 text-amber-300 border-amber-500/30";
@@ -74,6 +99,7 @@ function UserAccessEditor({
 }) {
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState(user.role);
+  const [organizationType, setOrganizationType] = useState(user.organizationType || "MUNICIPAL");
   const [provinceId, setProvinceId] = useState("");
   const [scope, setScope] = useState<AccessScope>(user.zones[0]?.locality ? "LOCALITY" : "DISTRICT");
   const [district, setDistrict] = useState(user.zones[0]?.district ?? "");
@@ -86,6 +112,7 @@ function UserAccessEditor({
     const zone = user.zones[0];
     const matchingProvince = provinces.find((province) => province.nombre === zone?.province);
     setRole(user.role);
+    setOrganizationType(user.organizationType || "MUNICIPAL");
     setProvinceId(matchingProvince?.id ?? "");
     setScope(zone?.locality ? "LOCALITY" : "DISTRICT");
     setDistrict(zone?.district ?? "");
@@ -125,6 +152,7 @@ function UserAccessEditor({
     setLocalError("");
     const saved = await save({
       role,
+      organizationType,
       zones: [{ province, district, locality: scope === "LOCALITY" ? locality : null }],
     });
     if (saved) setOpen(false);
@@ -138,7 +166,7 @@ function UserAccessEditor({
         onClick={openEditor}
         className="rounded-xl border border-amber-700/70 bg-amber-950/30 px-4 py-2 text-sm font-bold text-amber-200 disabled:opacity-50"
       >
-        ✏️ Editar rol y jurisdicción
+        ✏️ Editar organismo, rol y jurisdicción
       </button>
     );
   }
@@ -156,6 +184,16 @@ function UserAccessEditor({
       {localError && <div className="mt-3 rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">{localError}</div>}
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-sm text-slate-300">Organismo
+          <select value={organizationType} onChange={(event) => setOrganizationType(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
+            {user.role === "ADMIN" && <option value="MUNICIPAL">Administración general</option>}
+            <option value="MUNICIPAL">Municipio / Centro de Monitoreo</option>
+            <option value="POLICE">Policía</option>
+            <option value="FIRE">Bomberos</option>
+            <option value="MEDICAL">Salud / Emergencias médicas</option>
+            <option value="CIVIL_DEFENSE">Defensa Civil</option>
+          </select>
+        </label>
         <label className="text-sm text-slate-300">Rol
           <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
             {user.role === "ADMIN" && <option value="ADMIN">Superadministrador</option>}
@@ -227,6 +265,7 @@ export default function UsuariosPage() {
     name: "",
     password: "",
     role: "OPERATOR",
+    organizationType: "MUNICIPAL",
     province: "Buenos Aires",
     district: "",
     locality: "",
@@ -369,7 +408,7 @@ export default function UsuariosPage() {
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-red-400">Administración</p>
             <h1 className="text-3xl font-black">Usuarios del Centro</h1>
-            <p className="mt-1 text-sm text-slate-400">Permisos, jurisdicciones y suscripciones.</p>
+            <p className="mt-1 text-sm text-slate-400">Organismos, permisos, jurisdicciones y suscripciones.</p>
           </div>
           <div className="flex gap-2">
             <a href="/admin/auditoria" className="rounded-xl border border-slate-700 px-4 py-2">📋 Auditoría</a>
@@ -409,6 +448,15 @@ export default function UsuariosPage() {
                 />
               </label>
             ))}
+            <label className="mt-4 block text-sm">Organismo
+              <select value={form.organizationType} onChange={(e) => setForm({ ...form, organizationType: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
+                <option value="MUNICIPAL">🏛️ Municipio / Centro de Monitoreo</option>
+                <option value="POLICE">🚓 Policía</option>
+                <option value="FIRE">🚒 Bomberos</option>
+                <option value="MEDICAL">🚑 Salud / Emergencias médicas</option>
+                <option value="CIVIL_DEFENSE">🛡️ Defensa Civil</option>
+              </select>
+            </label>
             <label className="mt-4 block text-sm text-slate-300">Provincia
               <select value={provinceId} onChange={(e) => setProvinceId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" required>
                 <option value="">Seleccionar provincia</option>
@@ -460,6 +508,9 @@ export default function UsuariosPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-black">{u.name}</h3>
                       <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">{roleLabel[u.role] || u.role}</span>
+                      <span className="rounded-full border border-cyan-800/70 bg-cyan-950/30 px-2 py-1 text-xs font-bold text-cyan-200">
+                        {organizationIcon[u.organizationType] || "🏛️"} {organizationLabel[u.organizationType] || u.organizationType}
+                      </span>
                       <span className={u.active ? "text-emerald-400" : "text-red-400"}>{u.active ? "● Cuenta activa" : "● Cuenta suspendida"}</span>
                     </div>
                     <p className="text-sm text-slate-400">@{u.username}</p>
@@ -467,6 +518,14 @@ export default function UsuariosPage() {
                       {u.zones.length ? u.zones.map((z, i) => <div key={i}>📍 {z.locality ? `${z.locality} · ` : `Todo ${z.district} · `}{z.locality ? z.district : ""}{z.locality ? " · " : ""}{z.province}</div>) : <div>🌐 Sin zonas asignadas</div>}
                     </div>
                     <p className="mt-2 text-xs text-slate-500">Último acceso: {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("es-AR") : "Nunca"}</p>
+                    <div className="mt-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Permisos por organismo</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {(organizationPermissions[u.organizationType] || ["Según configuración"]).map((permission) => (
+                          <span key={permission} className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-300">{permission}</span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 p-4 lg:w-[430px]">

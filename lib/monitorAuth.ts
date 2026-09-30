@@ -9,6 +9,7 @@ export type MonitorActor = {
   username: string;
   name: string;
   role: "ADMIN" | "CENTER_ADMIN" | "OPERATOR" | "INSTITUTIONAL";
+  organizationType: "POLICE" | "FIRE" | "MEDICAL" | "CIVIL_DEFENSE" | "MUNICIPAL";
   zones: Array<{ province: string; district: string; locality: string | null }>;
   subscription?: {
     plan: string;
@@ -80,7 +81,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
   const legacy = store.get("admin_session")?.value;
   const legacySecret = process.env.ADMIN_SESSION_SECRET;
   if (legacy && legacySecret && verifyLegacyAdminToken(legacy, legacySecret)) {
-    return { kind: "legacy_admin", id: null, username: "admin", name: "Administrador", role: "ADMIN", zones: [], subscription: { plan: "COURTESY", status: "ACTIVE", endsAt: null, autoRenew: false, mpStatus: null } };
+    return { kind: "legacy_admin", id: null, username: "admin", name: "Administrador", role: "ADMIN", organizationType: "MUNICIPAL", zones: [], subscription: { plan: "COURTESY", status: "ACTIVE", endsAt: null, autoRenew: false, mpStatus: null } };
   }
 
   const token = store.get(SESSION_COOKIE)?.value;
@@ -97,6 +98,7 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
     username: session.user.username,
     name: session.user.name,
     role: session.user.role as MonitorActor["role"],
+    organizationType: session.user.organizationType as MonitorActor["organizationType"],
     zones: session.user.zones.map(z => ({ province: z.province, district: z.district, locality: z.locality })),
     subscription: {
       plan: session.user.subscriptionPlan,
@@ -106,6 +108,20 @@ export async function getMonitorActor(): Promise<MonitorActor | null> {
       mpStatus: session.user.mpStatus,
     },
   };
+}
+
+const ORGANIZATION_CATEGORIES: Record<MonitorActor["organizationType"], string[]> = {
+  POLICE: ["Delito / Robo", "Persona sospechosa", "Vehículo sospechoso", "Accidente", "Emergencia"],
+  FIRE: ["Incendio", "Accidente", "Emergencia"],
+  MEDICAL: ["Accidente", "Emergencia"],
+  CIVIL_DEFENSE: ["Defensa Civil", "Incendio", "Accidente", "Emergencia"],
+  MUNICIPAL: ["Delito / Robo", "Persona sospechosa", "Vehículo sospechoso", "Accidente", "Incendio", "Emergencia", "Defensa Civil"],
+};
+
+function organizationAllowsReport(actor: MonitorActor, report: { category?: string | null }) {
+  if (actor.role === "ADMIN") return true;
+  if (!report.category) return true;
+  return ORGANIZATION_CATEGORIES[actor.organizationType]?.includes(report.category) ?? false;
 }
 
 function zoneAllowsReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
@@ -119,12 +135,12 @@ function zoneAllowsReport(actor: MonitorActor, report: { province: string | null
   );
 }
 
-export function canViewReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
-  return zoneAllowsReport(actor, report);
+export function canViewReport(actor: MonitorActor, report: { category?: string | null; province: string | null; district: string | null; locality: string | null }) {
+  return organizationAllowsReport(actor, report) && zoneAllowsReport(actor, report);
 }
 
-export function canOperateReport(actor: MonitorActor, report: { province: string | null; district: string | null; locality: string | null }) {
-  return actor.role !== "INSTITUTIONAL" && zoneAllowsReport(actor, report);
+export function canOperateReport(actor: MonitorActor, report: { category?: string | null; province: string | null; district: string | null; locality: string | null }) {
+  return actor.role !== "INSTITUTIONAL" && organizationAllowsReport(actor, report) && zoneAllowsReport(actor, report);
 }
 
 export function canManageCenter(actor: MonitorActor) {

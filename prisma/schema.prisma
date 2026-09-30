@@ -214,6 +214,7 @@ model MonitoringUser {
   name         String
   passwordHash String
   role         String    @default("OPERATOR")
+  organizationType String @default("MUNICIPAL")
   active       Boolean   @default(true)
   lastLoginAt  DateTime?
 
@@ -249,6 +250,7 @@ model MonitoringUser {
 
   @@index([active])
   @@index([role])
+  @@index([organizationType])
   @@index([subscriptionPlan])
   @@index([subscriptionStatus])
   @@index([subscriptionEndsAt])

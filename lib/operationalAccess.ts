@@ -16,8 +16,8 @@ const SERVICE_CATEGORIES: Record<ServiceType, string[]> = {
   POLICE: ["Delito / Robo", "Persona sospechosa", "Vehículo sospechoso", "Accidente", "Emergencia"],
   FIRE: ["Incendio", "Accidente", "Emergencia"],
   MEDICAL: ["Accidente", "Emergencia"],
-  CIVIL_DEFENSE: ["Incendio", "Accidente", "Emergencia"],
-  MUNICIPAL: ["Delito / Robo", "Persona sospechosa", "Vehículo sospechoso", "Accidente", "Incendio", "Emergencia"],
+  CIVIL_DEFENSE: ["Defensa Civil", "Incendio", "Accidente", "Emergencia"],
+  MUNICIPAL: ["Delito / Robo", "Persona sospechosa", "Vehículo sospechoso", "Accidente", "Incendio", "Emergencia", "Defensa Civil"],
 };
 
 const LEGACY_ZONE = {

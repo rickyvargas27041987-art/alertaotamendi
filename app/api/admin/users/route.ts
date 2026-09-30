@@ -9,6 +9,8 @@ async function requireAdmin() {
   return actor?.role === "ADMIN" ? actor : null;
 }
 
+const ORGANIZATION_TYPES = ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE", "MUNICIPAL"] as const;
+
 export async function GET() {
   const actor = await requireAdmin();
   if (!actor) return NextResponse.json({ success: false, error: "No autorizado." }, { status: 403 });
@@ -26,6 +28,9 @@ export async function POST(request: Request) {
   const role = ["CENTER_ADMIN", "OPERATOR", "INSTITUTIONAL"].includes(body.role)
     ? String(body.role)
     : "OPERATOR";
+  const organizationType = ORGANIZATION_TYPES.includes(body.organizationType)
+    ? String(body.organizationType)
+    : "MUNICIPAL";
   const zones = Array.isArray(body.zones) ? body.zones : [];
   const billingEmail = String(body.billingEmail ?? "").trim().toLowerCase() || null;
   const plan = normalizePlan(body.subscriptionPlan);
@@ -56,6 +61,7 @@ export async function POST(request: Request) {
         name,
         passwordHash: hashPassword(password),
         role,
+        organizationType,
         active: true,
         billingEmail,
         subscriptionPlan: plan,
@@ -75,7 +81,7 @@ export async function POST(request: Request) {
       },
       include: { zones: true },
     });
-    await audit(actor, "USER_CREATED", `Usuario ${username} (${role}) - plan ${user.subscriptionPlan}`);
+    await audit(actor, "USER_CREATED", `Usuario ${username} (${role} / ${organizationType}) - plan ${user.subscriptionPlan}`);
     const { passwordHash, ...safe } = user;
     return NextResponse.json({ success: true, user: safe }, { status: 201 });
   } catch (e: any) {
@@ -112,6 +118,12 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: "Rol inválido." }, { status: 400 });
     }
     if (current.role !== "ADMIN") data.role = body.role;
+  }
+  if ("organizationType" in body) {
+    if (!ORGANIZATION_TYPES.includes(body.organizationType)) {
+      return NextResponse.json({ success: false, error: "Organismo inválido." }, { status: 400 });
+    }
+    if (current.role !== "ADMIN") data.organizationType = body.organizationType;
   }
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
   if (typeof body.password === "string" && body.password.length >= 8) data.passwordHash = hashPassword(body.password);
@@ -195,7 +207,7 @@ export async function PATCH(request: Request) {
     return tx.monitoringUser.findUnique({ where: { id }, include: { zones: true } });
   });
 
-  await audit(actor, "USER_UPDATED", `Usuario #${id}: ${JSON.stringify({ active: body.active, role: body.role, subscriptionAction: action || undefined, plan: body.subscriptionPlan, zonesChanged: hasZonesUpdate })}`);
+  await audit(actor, "USER_UPDATED", `Usuario #${id}: ${JSON.stringify({ active: body.active, role: body.role, organizationType: body.organizationType, subscriptionAction: action || undefined, plan: body.subscriptionPlan, zonesChanged: hasZonesUpdate })}`);
   // Nunca devolver el hash de contraseña en la respuesta de actualización.
   const safe = user ? Object.fromEntries(Object.entries(user).filter(([key]) => key !== "passwordHash")) : null;
   return NextResponse.json({ success: true, user: safe });
