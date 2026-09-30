@@ -99,7 +99,8 @@ type AdminSelectedLocation = {
   localityId?: string;
   bounds?: [[number, number], [number, number]];
   detailZoom?: boolean;
-  detailLevel?: 0 | 1 | 2;
+  detailLevel?: 0 | 1 | 2 | 3;
+  detailDirection?: "in" | "out";
   commandKey?: number;
 } | null;
 
@@ -487,18 +488,24 @@ function AdminViewport({
       }
 
       if (selectedLocation) {
-        // «Ver detalle» funciona en 3 pasos sobre la localidad seleccionada:
-        // 0 = vista normal, 1 = calles, 2 = detalle cercano.
+        // «Ver detalle» avanza por tres acercamientos y luego vuelve
+        // gradualmente por los mismos niveles: 0 → 1 → 2 → 3 → 2 → 1 → 0.
         const detailLevel = selectedLocation.detailLevel ?? (selectedLocation.detailZoom ? 1 : 0);
         if (detailLevel > 0) {
-          const detailDiameterMeters = detailLevel === 2 ? 1400 : 3200;
+          const detailDiameterMeters =
+            detailLevel === 3 ? 900 :
+            detailLevel === 2 ? 1800 :
+            4200;
           const detailBounds = L.latLng(
             selectedLocation.latitude,
             selectedLocation.longitude
           ).toBounds(detailDiameterMeters);
           map.fitBounds(detailBounds, {
             padding: [24, 24],
-            maxZoom: detailLevel === 2 ? 18 : 17,
+            maxZoom:
+              detailLevel === 3 ? 19 :
+              detailLevel === 2 ? 18 :
+              17,
             animate: true,
             duration: 0.6,
           });
@@ -1434,13 +1441,26 @@ export default function MapaAlertasLeaflet({
                 <button
                   type="button"
                   onClick={() => {
-                    // Ciclo: vista normal -> calles -> detalle cercano -> vista normal.
+                    // Ciclo progresivo: 0 → 1 → 2 → 3 → 2 → 1 → 0.
                     const currentLevel = adminSelectedLocation.detailLevel ?? (adminSelectedLocation.detailZoom ? 1 : 0);
-                    const nextLevel = ((currentLevel + 1) % 3) as 0 | 1 | 2;
+                    const currentDirection = adminSelectedLocation.detailDirection ?? "in";
+
+                    let nextLevel: 0 | 1 | 2 | 3;
+                    let nextDirection: "in" | "out" = currentDirection;
+
+                    if (currentDirection === "in") {
+                      nextLevel = Math.min(3, currentLevel + 1) as 0 | 1 | 2 | 3;
+                      if (nextLevel === 3) nextDirection = "out";
+                    } else {
+                      nextLevel = Math.max(0, currentLevel - 1) as 0 | 1 | 2 | 3;
+                      if (nextLevel === 0) nextDirection = "in";
+                    }
+
                     setAdminSelectedLocation({
                       ...adminSelectedLocation,
                       detailZoom: nextLevel > 0,
                       detailLevel: nextLevel,
+                      detailDirection: nextDirection,
                       commandKey: Date.now(),
                     });
                     setAdminLocationKey((value) => value + 1);
