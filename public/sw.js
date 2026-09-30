@@ -126,6 +126,10 @@ self.addEventListener("push", (event) => {
         {
           body,
 
+          // Identidad visual propia cuando la notificación llega por Web Push/PWA.
+          icon: data.icon || "/icons/icon-192x192.png",
+          badge: data.badge || "/icons/icon-maskable-192x192.png",
+
           /*
            * El tag evita que el mismo reporte
            * cree notificaciones duplicadas.

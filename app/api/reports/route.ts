@@ -480,56 +480,91 @@ function sharedDetailCount(a: string, b: string) {
 }
 
 async function sendPreventivePush(alert: {
-  id: number; category: string; centerLatitude: number | null; centerLongitude: number | null;
-}) {
-  if (alert.centerLatitude === null || alert.centerLongitude === null) return;
+  id: number;
+  category: string;
+  reportCount: number;
+  centerLatitude: number | null;
+  centerLongitude: number | null;
+}, escalation = false) {
+  if (alert.centerLatitude === null || alert.centerLongitude === null) {
+    return { web: { targeted: 0, sent: 0, failed: 0, expired: 0 }, fcm: { targeted: 0, sent: 0, failed: 0, expired: 0 } };
+  }
+
   const [subscriptions, fcmDevices] = await Promise.all([
     prisma.pushSubscription.findMany({ where: { enabled: true } }),
     prisma.fcmDevice.findMany({ where: { enabled: true } }),
   ]);
+
   const nearby = subscriptions.filter((subscription) =>
     calcularDistanciaKm(subscription.latitude, subscription.longitude, alert.centerLatitude!, alert.centerLongitude!) <= PUSH_RADIUS_KM
   );
-
-  await Promise.all(nearby.map(async (subscription) => {
-    try {
-      const result = await sendWebPush(
-        { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth },
-        {
-          title: "⚠️ AVISO PREVENTIVO EN LA ZONA",
-          body: "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia.",
-          url: "/mapa",
-          tag: `preventive-${alert.id}`,
-          priority: "normal",
-        }
-      );
-      if (result.status === 404 || result.status === 410) {
-        await prisma.pushSubscription.update({ where: { id: subscription.id }, data: { enabled: false } });
-      }
-    } catch (error) {
-      console.error(`[PUSH] Error en alerta preventiva #${alert.id}:`, error);
-    }
-  }));
-
   const nearbyFcm = fcmDevices.filter((device) =>
     calcularDistanciaKm(device.latitude, device.longitude, alert.centerLatitude!, alert.centerLongitude!) <= PUSH_RADIUS_KM
   );
-  await Promise.all(nearbyFcm.map(async (device) => {
+
+  const title = escalation
+    ? "⚠️ ACTUALIZACIÓN PREVENTIVA IMPORTANTE"
+    : "⚠️ AVISO PREVENTIVO EN LA ZONA";
+  const body = escalation
+    ? `La alerta preventiva aumentó a ${alert.reportCount} reportes coincidentes en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia.`
+    : "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia.";
+  const tag = escalation ? `preventive-${alert.id}-6` : `preventive-${alert.id}`;
+
+  // Las preventivas se consideran avisos importantes: prioridad alta para
+  // Web Push y FCM/Android, con vibración y sonido a través del canal nativo.
+  const webResults = await Promise.all(nearby.map(async (subscription) => {
+    try {
+      const result = await sendWebPush(
+        { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth },
+        { title, body, url: "/mapa", tag, priority: "high" }
+      );
+      if (result.status === 404 || result.status === 410) {
+        await prisma.pushSubscription.update({ where: { id: subscription.id }, data: { enabled: false } });
+        return { ok: false, expired: true };
+      }
+      return { ok: result.ok, expired: false };
+    } catch (error) {
+      console.error(`[PUSH] Error en alerta preventiva #${alert.id}:`, error);
+      return { ok: false, expired: false };
+    }
+  }));
+
+  const fcmResults = await Promise.all(nearbyFcm.map(async (device) => {
     try {
       const result = await sendFcmNotification(device.token, {
-        title: "⚠️ AVISO PREVENTIVO EN LA ZONA",
-        body: "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector.",
+        title,
+        body,
         url: "/mapa",
-        tag: `preventive-${alert.id}`,
-        priority: "normal",
+        tag,
+        priority: "high",
       });
       if (result.invalidToken) {
         await prisma.fcmDevice.update({ where: { id: device.id }, data: { enabled: false } });
       }
+      return { ok: result.ok, expired: result.invalidToken };
     } catch (error) {
       console.error(`[FCM] Error en alerta preventiva #${alert.id}:`, error);
+      return { ok: false, expired: false };
     }
   }));
+
+  const metrics = {
+    web: {
+      targeted: nearby.length,
+      sent: webResults.filter((item) => item.ok).length,
+      failed: webResults.filter((item) => !item.ok).length,
+      expired: webResults.filter((item) => item.expired).length,
+    },
+    fcm: {
+      targeted: nearbyFcm.length,
+      sent: fcmResults.filter((item) => item.ok).length,
+      failed: fcmResults.filter((item) => !item.ok).length,
+      expired: fcmResults.filter((item) => item.expired).length,
+    },
+  };
+
+  console.log(`[PREVENTIVE PUSH] #${alert.id}${escalation ? " ESCALADA" : ""}`, metrics);
+  return metrics;
 }
 
 async function evaluateSuspiciousPattern(report: {
@@ -577,15 +612,17 @@ async function evaluateSuspiciousPattern(report: {
 
   let preventiveAlert;
   let isNew = false;
+  let crossedEscalationThreshold = false;
   if (existing) {
     const merged = Array.from(new Set([...existing.reportIds, ...reportIds]));
+    crossedEscalationThreshold = existing.reportCount < 6 && merged.length >= 6;
     preventiveAlert = await prisma.personPatternAlert.update({
       where: { id: existing.id },
       data: {
         triggerReportId: report.id, reportIds: merged, reportCount: merged.length,
         centerLatitude, centerLongitude, radiusKm, timeWindowMinutes: PREVENTIVE_WINDOW_MINUTES,
         summary: `Se detectaron ${merged.length} reportes coincidentes de ${report.category} en el sector.`,
-        reason: "Coincidencia por proximidad geográfica y/o detalles compartidos entre reportes.",
+        reason: existing.reason || "Coincidencia por proximidad geográfica y/o detalles compartidos entre reportes.",
         lastReportAt: report.createdAt,
       },
     });
@@ -602,9 +639,13 @@ async function evaluateSuspiciousPattern(report: {
     });
   }
 
-  // Un solo beep/push al nacer la alerta preventiva; los reportes posteriores se agrupan sin repetir aviso.
-  if (isNew && !preventiveAlert.notificationSentAt) {
-    await sendPreventivePush(preventiveAlert);
+  // Primer aviso al nacer (3 coincidencias) y una única actualización reforzada
+  // cuando el mismo patrón crece y alcanza 6 coincidencias.
+  const shouldSendInitial = isNew && !preventiveAlert.notificationSentAt;
+  const shouldSendEscalation = !isNew && crossedEscalationThreshold;
+
+  if (shouldSendInitial || shouldSendEscalation) {
+    const metrics = await sendPreventivePush(preventiveAlert, shouldSendEscalation);
     await notifyPreventivePolice({
       id: report.id,
       category: report.category,
@@ -613,7 +654,15 @@ async function evaluateSuspiciousPattern(report: {
       district: report.district ?? null,
       locality: report.locality ?? null,
     });
-    await prisma.personPatternAlert.update({ where: { id: preventiveAlert.id }, data: { notificationSentAt: new Date() } });
+
+    const deliverySummary = `Último aviso: FCM ${metrics.fcm.sent}/${metrics.fcm.targeted} enviados · Web ${metrics.web.sent}/${metrics.web.targeted} enviados · fallidos ${metrics.fcm.failed + metrics.web.failed}.`;
+    await prisma.personPatternAlert.update({
+      where: { id: preventiveAlert.id },
+      data: {
+        notificationSentAt: new Date(),
+        reason: `Coincidencia por proximidad geográfica y/o detalles compartidos entre reportes. ${deliverySummary}`,
+      },
+    });
   }
 }
 
