@@ -19,6 +19,7 @@ const serviceLabel: Record<string, string> = {
   FIRE: "Bomberos",
   MEDICAL: "Emergencias médicas",
   CIVIL_DEFENSE: "Defensa Civil",
+  MUNICIPAL: "Centro / Municipio",
 };
 
 export default function OperationalAccessPanel() {

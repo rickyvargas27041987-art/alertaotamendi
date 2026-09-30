@@ -100,6 +100,7 @@ type AdminSelectedLocation = {
   bounds?: [[number, number], [number, number]];
   detailZoom?: boolean;
   detailLevel?: 0 | 1 | 2;
+  commandKey?: number;
 } | null;
 
 /* =========================================================
@@ -453,9 +454,14 @@ function AdminViewport({
     const timer = window.setTimeout(() => {
       map.invalidateSize();
 
-      // Una orden explícita (por ejemplo «Volver al mapa» desde un reporte)
-      // siempre tiene prioridad sobre la localidad seleccionada.
-      if (focusTarget) {
+      // La cámara obedece siempre a la orden más reciente. Antes, un focusTarget
+      // antiguo de «Volver al mapa» quedaba activo para siempre y bloqueaba
+      // Miramar/Mechongué/Mi jurisdicción aunque los selectores sí cambiaran.
+      const selectedCommandKey = selectedLocation?.commandKey ?? 0;
+      const focusCommandKey = focusTarget?.key ?? 0;
+      const useSelectedLocation = Boolean(selectedLocation) && selectedCommandKey >= focusCommandKey;
+
+      if (focusTarget && !useSelectedLocation) {
         const bounds = L.latLng(
           focusTarget.latitude,
           focusTarget.longitude
@@ -804,6 +810,7 @@ export default function MapaAlertasLeaflet({
           latitude: saved.latitude,
           longitude: saved.longitude,
           label: saved.label,
+          commandKey: Date.now(),
         });
 
         setAdminLocationKey(
@@ -832,6 +839,7 @@ export default function MapaAlertasLeaflet({
       ],
       detailZoom: false,
       detailLevel: 0,
+      commandKey: Date.now(),
     };
   }
 
@@ -844,7 +852,7 @@ export default function MapaAlertasLeaflet({
     if (districtLocalities.length) {
       const latitude = districtLocalities.reduce((sum, item) => sum + item.lat, 0) / districtLocalities.length;
       const longitude = districtLocalities.reduce((sum, item) => sum + item.lon, 0) / districtLocalities.length;
-      setAdminSelectedLocation({ latitude, longitude, label: `${districtValue}, ${province.nombre}` });
+      setAdminSelectedLocation({ latitude, longitude, label: `${districtValue}, ${province.nombre}`, commandKey: Date.now() });
       setAdminLocationKey((value) => value + 1);
     }
 
@@ -910,6 +918,7 @@ export default function MapaAlertasLeaflet({
       longitude: localidad.lon,
       label,
       localityId: localidad.id,
+      commandKey: Date.now(),
     };
 
     setAdminSelectedLocation(baseLocation);
@@ -921,7 +930,7 @@ export default function MapaAlertasLeaflet({
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         if (!data?.success || !Array.isArray(data.bounds)) return;
-        setAdminSelectedLocation({ ...baseLocation, bounds: data.bounds });
+        setAdminSelectedLocation({ ...baseLocation, bounds: data.bounds, commandKey: Date.now() });
         setAdminLocationKey((value) => value + 1);
       })
       .catch((error) => console.warn("No se pudieron cargar límites de localidad:", error));
@@ -951,7 +960,7 @@ export default function MapaAlertasLeaflet({
     const province = provincias.find((item) => item.nombre === zone.province);
     if (!province) {
       if (primaryJurisdiction) {
-        setAdminSelectedLocation({ ...primaryJurisdiction, detailZoom: false, detailLevel: 0 });
+        setAdminSelectedLocation({ ...primaryJurisdiction, detailZoom: false, detailLevel: 0, commandKey: Date.now() });
         setAdminLocationKey((value) => value + 1);
       }
       return;
@@ -981,6 +990,7 @@ export default function MapaAlertasLeaflet({
       localityId: locality.id,
       detailZoom: false,
       detailLevel: 0,
+      commandKey: Date.now(),
     };
     setAdminSelectedLocation(baseLocation);
     setAdminLocationKey((value) => value + 1);
@@ -989,7 +999,7 @@ export default function MapaAlertasLeaflet({
       const response = await fetch(`/api/georef?tipo=limites-localidad&id=${encodeURIComponent(locality.id)}`);
       const data = response.ok ? await response.json() : null;
       if (data?.success && Array.isArray(data.bounds)) {
-        setAdminSelectedLocation({ ...baseLocation, bounds: data.bounds });
+        setAdminSelectedLocation({ ...baseLocation, bounds: data.bounds, commandKey: Date.now() });
         setAdminLocationKey((value) => value + 1);
       }
     } catch (error) {
@@ -1101,6 +1111,42 @@ export default function MapaAlertasLeaflet({
       filtro,
       mode,
     ]);
+
+  const markerPositions = useMemo(() => {
+    const positions = new Map<number, [number, number]>();
+    if (!kioskMode) {
+      for (const report of filteredReports) {
+        if (report.latitude !== null && report.longitude !== null) positions.set(report.id, [report.latitude, report.longitude]);
+      }
+      return positions;
+    }
+
+    const groups = new Map<string, Report[]>();
+    for (const report of filteredReports) {
+      if (report.latitude === null || report.longitude === null) continue;
+      // ~20 m: suficiente para detectar marcadores visualmente superpuestos.
+      const key = `${report.latitude.toFixed(4)}|${report.longitude.toFixed(4)}`;
+      const group = groups.get(key) ?? [];
+      group.push(report);
+      groups.set(key, group);
+    }
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        const report = group[0];
+        positions.set(report.id, [report.latitude!, report.longitude!]);
+        continue;
+      }
+      group.forEach((report, index) => {
+        const angle = (Math.PI * 2 * index) / group.length;
+        const radius = Math.min(0.00042, 0.00016 + group.length * 0.000025);
+        positions.set(report.id, [
+          report.latitude! + Math.sin(angle) * radius,
+          report.longitude! + Math.cos(angle) * radius,
+        ]);
+      });
+    }
+    return positions;
+  }, [filteredReports, kioskMode]);
 
   const hotZones = useMemo(() => {
     if (!hotZoneMode) return [] as Array<{ key: string; latitude: number; longitude: number; count: number }>;
@@ -1384,6 +1430,7 @@ export default function MapaAlertasLeaflet({
                       ...adminSelectedLocation,
                       detailZoom: nextLevel > 0,
                       detailLevel: nextLevel,
+                      commandKey: Date.now(),
                     });
                     setAdminLocationKey((value) => value + 1);
                   }}
@@ -1748,7 +1795,7 @@ export default function MapaAlertasLeaflet({
                     key={
                       report.id
                     }
-                    position={[
+                    position={markerPositions.get(report.id) ?? [
                       report.latitude!,
                       report.longitude!,
                     ]}

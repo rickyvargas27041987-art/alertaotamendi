@@ -12,10 +12,15 @@ type OperationalReport = {
 };
 
 const SERVICE_ROUTING: Record<string, ServiceType[]> = {
-  "Delito / Robo": ["POLICE"],
-  Incendio: ["FIRE"],
-  Accidente: ["MEDICAL"],
-  Emergencia: ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE"],
+  // El Centro Municipal recibe todos los incidentes de su jurisdicción para coordinar.
+  "Delito / Robo": ["POLICE", "MUNICIPAL"],
+  "Persona sospechosa": ["POLICE", "MUNICIPAL"],
+  "Vehículo sospechoso": ["POLICE", "MUNICIPAL"],
+  // Un accidente puede requerir seguridad de escena, rescate y asistencia médica.
+  Accidente: ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE", "MUNICIPAL"],
+  // Incendios relevantes se comparten con Bomberos y coordinación territorial.
+  Incendio: ["FIRE", "CIVIL_DEFENSE", "POLICE", "MUNICIPAL"],
+  Emergencia: ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE", "MUNICIPAL"],
 };
 
 function normalize(value: string | null) {
@@ -80,5 +85,5 @@ export async function notifyOperationalResponders(report: OperationalReport) {
 }
 
 export async function notifyPreventivePolice(report: OperationalReport) {
-  return notifyServices(report, ["POLICE"], true);
+  return notifyServices(report, ["POLICE", "MUNICIPAL"], true);
 }

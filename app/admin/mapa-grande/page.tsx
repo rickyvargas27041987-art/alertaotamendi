@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
@@ -14,7 +14,7 @@ type Report = {
 };
 type Zone = { province: string; district: string; locality: string | null };
 type FocusTarget = { latitude: number; longitude: number; radiusMeters?: number; key: number };
-type AlertCard = { report: Report; priority: Priority; address: string; area: string };
+type AlertCard = { report: Report; priority: Priority; address: string; area: string; manual?: boolean };
 
 function priorityOf(report: Report): Priority {
   if (["critical", "high", "medium", "low"].includes(report.aiPriority ?? "")) return report.aiPriority as Priority;
@@ -44,16 +44,17 @@ export default function MapaGrandePage() {
   const seenIdsRef = useRef<Set<number>>(new Set());
   const alertTimerRef = useRef<number | null>(null);
   const focusKeyRef = useRef(0);
+  const lastProjectionCommandRef = useRef(0);
 
-  const showOperationalAlert = useCallback(async (report: Report) => {
+  const showOperationalAlert = useCallback(async (report: Report, manual = false) => {
     if (report.latitude === null || report.longitude === null) return;
     const priority = priorityOf(report);
-    if (priority !== "high" && priority !== "critical") return;
+    if (!manual && priority !== "high" && priority !== "critical") return;
 
     focusKeyRef.current += 1;
     setFocusTarget({ latitude: report.latitude, longitude: report.longitude, radiusMeters: 1000, key: focusKeyRef.current });
     const institutional = role === "INSTITUTIONAL";
-    setAlertCard({ report, priority, address: institutional ? "Sector aproximado" : "Obteniendo dirección…", area: institutional ? "La ubicación exacta está protegida." : "" });
+    setAlertCard({ report, priority, address: institutional ? "Sector aproximado" : "Obteniendo dirección…", area: institutional ? "La ubicación exacta está protegida." : "", manual });
 
     if (!institutional) {
       try {
@@ -71,9 +72,8 @@ export default function MapaGrandePage() {
     alertTimerRef.current = window.setTimeout(() => {
       focusKeyRef.current += 1;
       setAlertCard(null);
-      // Cambiar la key al quitar el foco hace que el mapa vuelva a su vista operativa habitual.
       setFocusTarget(null);
-    }, 30000);
+    }, manual ? 120000 : 30000);
   }, [role]);
 
   const load = useCallback(async () => {
@@ -125,17 +125,56 @@ export default function MapaGrandePage() {
 
   useEffect(() => () => { if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current); }, []);
 
+  const projectionReports = useMemo(() => {
+    const nowMs = Date.now();
+    return reports.filter((report) => {
+      if (["resuelta", "resuelto", "descartada"].includes(report.status.toLowerCase().trim())) return false;
+      const created = new Date(report.createdAt).getTime();
+      if (!Number.isFinite(created)) return false;
+      const ageMinutes = (nowMs - created) / 60000;
+      const priority = priorityOf(report);
+      const ttlMinutes = priority === "critical" ? 15 : priority === "high" ? 10 : 5;
+      return ageMinutes <= ttlMinutes || alertCard?.report.id === report.id;
+    });
+  }, [reports, alertCard?.report.id, now]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const readProjectionCommand = () => {
+      try {
+        const raw = window.localStorage.getItem("alerta_otamendi_projection_focus_v1");
+        if (!raw) return;
+        const command = JSON.parse(raw) as { reportId?: number; timestamp?: number; expiresAt?: number };
+        if (!command.reportId || !command.timestamp || command.timestamp <= lastProjectionCommandRef.current) return;
+        if (command.expiresAt && command.expiresAt < Date.now()) return;
+        const report = reports.find((item) => item.id === command.reportId);
+        if (!report) return;
+        lastProjectionCommandRef.current = command.timestamp;
+        void showOperationalAlert(report, true);
+      } catch (error) {
+        console.warn("No se pudo leer el comando de proyección:", error);
+      }
+    };
+    readProjectionCommand();
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "alerta_otamendi_projection_focus_v1") readProjectionCommand();
+    };
+    window.addEventListener("storage", onStorage);
+    const interval = window.setInterval(readProjectionCommand, 1000);
+    return () => { window.removeEventListener("storage", onStorage); window.clearInterval(interval); };
+  }, [ready, reports, showOperationalAlert]);
+
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">Cargando mapa operativo…</main>;
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-slate-950">
-      <MapaAlertas reports={reports} mode="admin" heightClassName="h-screen" monitorZones={zones} kioskMode focusTarget={focusTarget} privacyMode={role === "INSTITUTIONAL"} />
+      <MapaAlertas reports={projectionReports} mode="admin" heightClassName="h-screen" monitorZones={zones} kioskMode focusTarget={focusTarget} privacyMode={role === "INSTITUTIONAL"} />
 
       {alertCard && (
         <aside className="pointer-events-none absolute left-4 top-4 z-[1100] w-[min(390px,calc(100vw-32px))] rounded-2xl border border-red-400/60 bg-slate-950/80 p-4 text-white shadow-2xl backdrop-blur-md">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-300">🚨 Nueva alerta operativa</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-300">{alertCard.manual ? "📺 Alerta seleccionada por operador" : "🚨 Nueva alerta operativa"}</div>
               <div className="mt-1 text-lg font-black">Reporte #{alertCard.report.id}</div>
             </div>
             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${alertCard.priority === "critical" ? "border-red-400 bg-red-500/25 text-red-200" : "border-orange-400 bg-orange-500/25 text-orange-200"}`}>
@@ -151,7 +190,7 @@ export default function MapaGrandePage() {
           <p className="mt-3 line-clamp-3 text-xs leading-5 text-slate-200">{alertCard.report.aiSummary || alertCard.report.description || "Sin descripción adicional."}</p>
           <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400">
             <span>{new Date(alertCard.report.createdAt).toLocaleString("es-AR")}</span>
-            <span>Vista destacada · 30 s</span>
+            <span>{alertCard.manual ? "Fijada por operador · 2 min" : "Vista destacada · 30 s"}</span>
           </div>
         </aside>
       )}
@@ -159,7 +198,7 @@ export default function MapaGrandePage() {
       <div className="pointer-events-none absolute right-4 top-4 z-[1000] flex items-center gap-2">
         <div className="rounded-xl border border-slate-700/80 bg-slate-950/90 px-3 py-2 text-right text-white shadow-xl backdrop-blur">
           <div className="text-sm font-black">{now.toLocaleTimeString("es-AR")}</div>
-          <div className="text-[10px] text-emerald-400">● EN LÍNEA · {reports.filter(r => !["resuelta", "descartada"].includes(r.status)).length} activas</div>
+          <div className="text-[10px] text-emerald-400">● EN LÍNEA · {projectionReports.length} visibles</div>
         </div>
         <button type="button" onClick={() => document.documentElement.requestFullscreen?.()} className="pointer-events-auto rounded-xl border border-slate-700 bg-slate-950/90 px-3 py-3 text-sm font-bold text-white shadow-xl hover:bg-slate-800" title="Pantalla completa">⛶</button>
       </div>

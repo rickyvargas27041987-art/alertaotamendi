@@ -9,7 +9,7 @@ export const OPERATIONAL_COOKIE = "operational_session";
 export const OPERATIONAL_PERIOD_HOURS = 12;
 export const OPERATIONAL_PERIOD_MS = OPERATIONAL_PERIOD_HOURS * 60 * 60 * 1000;
 
-export const SERVICE_TYPES = ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE"] as const;
+export const SERVICE_TYPES = ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE", "MUNICIPAL"] as const;
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 
 const SERVICE_CATEGORIES: Record<ServiceType, string[]> = {
@@ -17,6 +17,7 @@ const SERVICE_CATEGORIES: Record<ServiceType, string[]> = {
   FIRE: ["Incendio", "Accidente", "Emergencia"],
   MEDICAL: ["Accidente", "Emergencia"],
   CIVIL_DEFENSE: ["Incendio", "Accidente", "Emergencia"],
+  MUNICIPAL: ["Delito / Robo", "Persona sospechosa", "Vehículo sospechoso", "Accidente", "Incendio", "Emergencia"],
 };
 
 const LEGACY_ZONE = {

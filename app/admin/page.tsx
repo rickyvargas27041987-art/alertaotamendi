@@ -115,6 +115,19 @@ function displayCategory(category: string) {
   return category === "Delito / Robo" ? "Hurto / Robo" : category;
 }
 
+function routedServices(category: string) {
+  const routes: Record<string, string[]> = {
+    "Delito / Robo": ["Policía", "Centro / Municipio"],
+    "Persona sospechosa": ["Policía", "Centro / Municipio"],
+    "Vehículo sospechoso": ["Policía", "Centro / Municipio"],
+    Accidente: ["Policía", "Bomberos", "Salud", "Defensa Civil", "Centro / Municipio"],
+    Incendio: ["Bomberos", "Defensa Civil", "Policía", "Centro / Municipio"],
+    Emergencia: ["Policía", "Bomberos", "Salud", "Defensa Civil", "Centro / Municipio"],
+  };
+  return routes[category] ?? ["Centro / Municipio"];
+}
+
+
 function esCritica(category: string) {
   return category === "Emergencia" || category === "Delito / Robo";
 }
@@ -632,6 +645,19 @@ const [aiError, setAiError] = useState<string | null>(null);
     setAiLoading(false);
   }
 }
+  function highlightInProjection(report: Report) {
+    if (report.latitude === null || report.longitude === null) return;
+    try {
+      window.localStorage.setItem("alerta_otamendi_projection_focus_v1", JSON.stringify({
+        reportId: report.id,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + 2 * 60 * 1000,
+      }));
+    } catch (error) {
+      console.warn("No se pudo enviar la alerta a la proyección:", error);
+    }
+  }
+
   function returnToMap() {
     // Conservamos las coordenadas antes de cerrar el detalle.
     // Si existen, el mapa vuelve exactamente a ese marcador mostrando
@@ -1330,6 +1356,9 @@ const [aiError, setAiError] = useState<string | null>(null);
                       <button onClick={() => void changeStatus(report.id, "resuelta")} disabled={updatingId === report.id} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">✔ Resuelta</button>
                       <button onClick={() => void changeStatus(report.id, "descartada")} disabled={updatingId === report.id} className="rounded-xl bg-slate-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">✕ Descartar</button>
                       <button onClick={() => void changeStatus(report.id, "pendiente")} disabled={updatingId === report.id} className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">↩ Pendiente</button>
+                      {report.latitude !== null && report.longitude !== null && (
+                        <button onClick={() => highlightInProjection(report)} className="rounded-xl border border-amber-500/50 bg-amber-950/30 px-3 py-2 text-sm font-semibold text-amber-200">📺 Proyectar</button>
+                      )}
                     </div>
                   )}
                 </article>
@@ -1468,6 +1497,18 @@ const [aiError, setAiError] = useState<string | null>(null);
                     )}
                   </div>
                 </div>}
+
+                {!isInstitutional && (
+                  <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/15 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">📡 Derivación operativa automática</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Los accesos operativos activos de esta jurisdicción reciben el incidente según su tipo de servicio.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {routedServices(selectedReport.category).map((service) => (
+                        <span key={service} className="rounded-full border border-emerald-500/30 bg-slate-950 px-3 py-1.5 text-xs font-bold text-emerald-200">✓ {service}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {!isInstitutional && <div className="rounded-2xl border border-violet-500/25 bg-violet-950/15 p-4">
                   <p className="text-xs font-bold uppercase tracking-wider text-violet-300">🕒 Línea de tiempo del incidente</p>
@@ -1749,6 +1790,15 @@ const [aiError, setAiError] = useState<string | null>(null);
                     <button onClick={() => void changeStatus(selectedReport.id, "descartada")} disabled={updatingId === selectedReport.id} className="rounded-xl bg-slate-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">✕ Descartar</button>
                   </div>
                 </div>}
+
+                {!isInstitutional && selectedReport.latitude !== null && selectedReport.longitude !== null && (
+                  <button
+                    onClick={() => highlightInProjection(selectedReport)}
+                    className="w-full rounded-2xl border border-amber-400/50 bg-amber-500/15 py-4 font-black text-amber-200 hover:bg-amber-500/25"
+                  >
+                    📺 Resaltar 2 min en la proyección
+                  </button>
+                )}
 
                 <button
                   onClick={returnToMap}

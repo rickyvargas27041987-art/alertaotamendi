@@ -41,6 +41,7 @@ const serviceLabels: Record<string, string> = {
   FIRE: "Bomberos",
   MEDICAL: "Emergencias médicas",
   CIVIL_DEFENSE: "Defensa Civil",
+  MUNICIPAL: "Centro / Municipio",
 };
 
 const categoryIcon: Record<string, string> = {
@@ -280,6 +281,7 @@ export default function OperationalPage() {
                   <option value="FIRE">Bomberos</option>
                   <option value="MEDICAL">Emergencias médicas</option>
                   <option value="CIVIL_DEFENSE">Defensa Civil</option>
+                  <option value="MUNICIPAL">Centro / Municipio</option>
                 </select>
               </label>
               {error && <div className="rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">{error}</div>}
