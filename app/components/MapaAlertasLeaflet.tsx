@@ -182,6 +182,12 @@ const MARKER_CONFIG: Record<
     emoji: "🆘",
     label: "Emergencia",
   },
+
+  "Defensa Civil": {
+    color: "#0891b2",
+    emoji: "🛡️",
+    label: "Defensa Civil",
+  },
 };
 
 function displayCategory(category: string) {
@@ -222,6 +228,11 @@ const FILTROS = [
   {
     label: "🆘 Emergencia",
     value: "Emergencia",
+  },
+
+  {
+    label: "🛡️ Defensa Civil",
+    value: "Defensa Civil",
   },
 ];
 

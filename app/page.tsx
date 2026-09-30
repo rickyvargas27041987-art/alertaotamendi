@@ -47,6 +47,7 @@ const categories = [
   { icon: "⚠️", title: "Accidente", label: "Accidente", helper: "Siniestro vial o situación con personas heridas", color: "bg-blue-500" },
   { icon: "🔥", title: "Incendio", label: "Incendio", helper: "Fuego, humo o riesgo de propagación", color: "bg-purple-500" },
   { icon: "🆘", title: "Emergencia", label: "Emergencia", helper: "Situación urgente que requiere atención inmediata", color: "bg-emerald-500" },
+  { icon: "🛡️", title: "Defensa Civil", label: "Defensa Civil", helper: "Postes o cables caídos, árboles, animales sueltos, anegamientos y otros riesgos en la vía pública", color: "bg-cyan-600" },
 ];
 
 const IMPORTANT_CATEGORIES = new Set([
@@ -171,6 +172,7 @@ export default function Home() {
   const [isAndroidApp, setIsAndroidApp] = useState(false);
   const [selected, setSelected] = useState("");
   const [description, setDescription] = useState("");
+  const [civilDefenseType, setCivilDefenseType] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -742,6 +744,10 @@ export default function Home() {
       setMessage("⚠️ Elegí primero qué está pasando.");
       return;
     }
+    if (selected === "Defensa Civil" && !civilDefenseType) {
+      setMessage("⚠️ Elegí qué tipo de situación de Defensa Civil querés informar.");
+      return;
+    }
     if (description.trim().length < 3) {
       setMessage("⚠️ Contanos brevemente qué estás observando.");
       return;
@@ -776,12 +782,17 @@ export default function Home() {
       const videoUrl = video ? await uploadMedia(video, "videos") : null;
       const audioUrl = audio ? await uploadMedia(audio, "audios") : null;
 
+      const reportDescription =
+        selected === "Defensa Civil"
+          ? `[Defensa Civil · ${civilDefenseType}] ${description.trim()}`
+          : description.trim();
+
       const response = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           category: selected,
-          description: description.trim(),
+          description: reportDescription,
           latitude: reportLatitude,
           longitude: reportLongitude,
           imageUrl,
@@ -809,6 +820,7 @@ export default function Home() {
       setMessage(`✅ Alerta enviada. Número de reporte: #${data.report?.id ?? ""}`);
       setDescription("");
       setSelected("");
+      setCivilDefenseType("");
       setPhoto(null);
       setVideo(null);
       setAudio(null);
@@ -1314,6 +1326,7 @@ export default function Home() {
               key={category.title}
               onClick={() => {
                 setSelected(category.title);
+                setCivilDefenseType("");
                 setMessage("");
                 window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
               }}
@@ -1339,6 +1352,31 @@ export default function Home() {
               </div>
               <button onClick={() => setSelected("")} className="text-sm text-slate-500">Cambiar</button>
             </div>
+
+            {selected === "Defensa Civil" && (
+              <div className="mt-5 rounded-2xl border border-cyan-700/40 bg-cyan-950/20 p-4">
+                <label className="block text-sm font-bold text-cyan-100">
+                  🛡️ ¿Qué situación querés informar?
+                </label>
+                <select
+                  value={civilDefenseType}
+                  onChange={(event) => setCivilDefenseType(event.target.value)}
+                  className="mt-3 w-full rounded-xl border border-cyan-800/60 bg-slate-950 p-3 text-sm text-white outline-none focus:border-cyan-500"
+                >
+                  <option value="">Elegí una opción</option>
+                  <option value="Poste o cable caído">Poste o cable caído</option>
+                  <option value="Árbol o rama caída">Árbol o rama caída</option>
+                  <option value="Animal suelto">Animal suelto</option>
+                  <option value="Anegamiento o inundación">Anegamiento o inundación</option>
+                  <option value="Riesgo estructural">Riesgo estructural</option>
+                  <option value="Obstáculo o peligro en la vía pública">Obstáculo o peligro en la vía pública</option>
+                  <option value="Otro">Otro</option>
+                </select>
+                <p className="mt-2 text-xs leading-5 text-cyan-100/60">
+                  El tipo seleccionado se enviará al Centro de Monitoreo y permitirá derivarlo a Defensa Civil.
+                </p>
+              </div>
+            )}
 
             <label className="mt-5 block text-sm font-semibold">Contanos qué estás observando</label>
             <textarea

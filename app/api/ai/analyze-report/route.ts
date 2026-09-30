@@ -9,6 +9,7 @@ const VALID_CATEGORIES = [
   "Accidente",
   "Incendio",
   "Emergencia",
+  "Defensa Civil",
 ] as const;
 
 /*
@@ -617,6 +618,7 @@ PRIORIDAD
 
 - high:
   hechos importantes que requieren revisión rápida.
+  En reportes de Defensa Civil, elevá a high o critical si hay riesgo inmediato para personas, cables energizados, peligro de derrumbe, inundación peligrosa o bloqueo grave de una vía.
 
 - medium:
   hechos relevantes sin peligro inmediato evidente.

@@ -95,8 +95,9 @@ const PRIORIDAD_CATEGORIA: Record<string, number> = {
   "Delito / Robo": 2,
   Accidente: 3,
   Incendio: 4,
-  "Vehículo sospechoso": 5,
-  "Persona sospechosa": 6,
+  "Defensa Civil": 5,
+  "Vehículo sospechoso": 6,
+  "Persona sospechosa": 7,
 };
 
 const CATEGORIES = [
@@ -105,6 +106,7 @@ const CATEGORIES = [
   "Delito / Robo",
   "Accidente",
   "Incendio",
+  "Defensa Civil",
   "Vehículo sospechoso",
   "Persona sospechosa",
 ];
@@ -122,6 +124,7 @@ function routedServices(category: string) {
     "Vehículo sospechoso": ["Policía", "Centro / Municipio"],
     Accidente: ["Policía", "Bomberos", "Salud", "Defensa Civil", "Centro / Municipio"],
     Incendio: ["Bomberos", "Defensa Civil", "Policía", "Centro / Municipio"],
+    "Defensa Civil": ["Defensa Civil", "Centro / Municipio"],
     Emergencia: ["Policía", "Bomberos", "Salud", "Defensa Civil", "Centro / Municipio"],
   };
   return routes[category] ?? ["Centro / Municipio"];
@@ -137,7 +140,7 @@ function esAlta(category: string) {
 }
 
 function esNormal(category: string) {
-  return category === "Vehículo sospechoso" || category === "Persona sospechosa";
+  return category === "Vehículo sospechoso" || category === "Persona sospechosa" || category === "Defensa Civil";
 }
 
 function reportPriority(report: Report): "critical" | "high" | "medium" | "low" {

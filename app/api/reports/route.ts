@@ -23,6 +23,7 @@ const VALID_CATEGORIES = [
   "Accidente",
   "Incendio",
   "Emergencia",
+  "Defensa Civil",
 ] as const;
 
 type ValidCategory =

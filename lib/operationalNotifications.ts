@@ -20,6 +20,7 @@ const SERVICE_ROUTING: Record<string, ServiceType[]> = {
   Accidente: ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE", "MUNICIPAL"],
   // Incendios relevantes se comparten con Bomberos y coordinación territorial.
   Incendio: ["FIRE", "CIVIL_DEFENSE", "POLICE", "MUNICIPAL"],
+  "Defensa Civil": ["CIVIL_DEFENSE", "MUNICIPAL"],
   Emergencia: ["POLICE", "FIRE", "MEDICAL", "CIVIL_DEFENSE", "MUNICIPAL"],
 };
 
