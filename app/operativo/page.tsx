@@ -100,9 +100,10 @@ export default function OperationalPage() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Report | null>(null);
   const [address, setAddress] = useState("");
-  const [pushState, setPushState] = useState<"idle" | "enabling" | "enabled" | "blocked">("idle");
+  const [pushState, setPushState] = useState<"idle" | "enabling" | "enabled" | "fallback" | "blocked">("idle");
   const [incomingAlert, setIncomingAlert] = useState<PushAlert | null>(null);
   const requestedReportRef = useRef<number | null>(null);
+  const fallbackKnownReportsRef = useRef<Set<number>>(new Set());
 
   const loadReports = useCallback(async () => {
     const response = await fetch("/api/operational/reports", { cache: "no-store" });
@@ -187,16 +188,88 @@ export default function OperationalPage() {
     return () => navigator.serviceWorker.removeEventListener("message", receive);
   }, [session, loadReports]);
 
+  function triggerInternalOperationalAlert(report: Report) {
+    setIncomingAlert({
+      title: `${categoryIcon[report.category] || "🚨"} ${report.category === "Delito / Robo" ? "Hurto / Robo" : report.category}`,
+      body: report.description,
+      reportId: report.id,
+      channel: "operational",
+    });
+
+    navigator.vibrate?.([500, 150, 500, 150, 800]);
+
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      const context = new AudioContextClass();
+
+      for (let index = 0; index < 10; index += 1) {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+
+        oscillator.type = "square";
+        oscillator.frequency.value = index % 2 ? 980 : 760;
+
+        const start = context.currentTime + index * 0.45;
+        gain.gain.setValueAtTime(0.13, start);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + 0.3);
+
+        oscillator.start(start);
+        oscillator.stop(start + 0.31);
+      }
+
+      window.setTimeout(() => void context.close(), 6000);
+    } catch {
+      // Si el navegador bloquea audio automático, el cartel interno sigue visible.
+    }
+  }
+
+  useEffect(() => {
+    if (!session || pushState !== "fallback") return;
+
+    fallbackKnownReportsRef.current = new Set(reports.map((report) => report.id));
+
+    const interval = window.setInterval(async () => {
+      try {
+        const response = await fetch("/api/operational/reports", { cache: "no-store" });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) return;
+
+        const incoming: Report[] = data.reports || [];
+        const known = fallbackKnownReportsRef.current;
+        const newReports = incoming.filter((report) => !known.has(report.id));
+
+        incoming.forEach((report) => known.add(report.id));
+        setReports(incoming);
+
+        if (newReports.length > 0) {
+          triggerInternalOperationalAlert(newReports[0]);
+        }
+      } catch {
+        // El refresco general de la página seguirá intentando aunque un ciclo falle.
+      }
+    }, 12_000);
+
+    return () => window.clearInterval(interval);
+  }, [session, pushState]);
+
   async function enableOperationalAlerts() {
     setPushState("enabling");
     setError("");
     try {
-      if (!("serviceWorker" in navigator)) {
-        throw new Error("Este navegador no permite notificaciones operativas en segundo plano.");
-      }
-
-      if (!("Notification" in window)) {
-        throw new Error("Este navegador no expone el sistema de notificaciones.");
+      if (!("serviceWorker" in navigator) || !("Notification" in window)) {
+        fallbackKnownReportsRef.current = new Set(reports.map((report) => report.id));
+        setPushState("fallback");
+        setError("");
+        return;
       }
 
       const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -206,9 +279,10 @@ export default function OperationalPage() {
       const registration = await navigator.serviceWorker.ready;
 
       if (!registration.pushManager) {
-        throw new Error(
-          "Este navegador no permite avisos push en este modo. Abrí el Acceso Operativo en Chrome/Edge o instalalo como aplicación."
-        );
+        fallbackKnownReportsRef.current = new Set(reports.map((report) => report.id));
+        setPushState("fallback");
+        setError("");
+        return;
       }
 
       const permission = await Notification.requestPermission();
@@ -397,10 +471,48 @@ export default function OperationalPage() {
           </div>
         </header>
 
-        <section className={`mt-4 rounded-2xl border p-4 ${pushState === "enabled" ? "border-emerald-700 bg-emerald-950/20" : "border-amber-700 bg-amber-950/20"}`}>
+        <section
+          className={`mt-4 rounded-2xl border p-4 ${
+            pushState === "enabled"
+              ? "border-emerald-700 bg-emerald-950/20"
+              : pushState === "fallback"
+              ? "border-cyan-700 bg-cyan-950/20"
+              : "border-amber-700 bg-amber-950/20"
+          }`}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="font-black">{pushState === "enabled" ? "🔔 Avisos operativos activados" : "🔕 Activá los avisos urgentes"}</p><p className="mt-1 text-xs leading-5 text-slate-400">Recibirás las alertas de tu servicio correspondientes a esta jurisdicción.</p></div>
-            {pushState !== "enabled" && <button type="button" onClick={() => void enableOperationalAlerts()} disabled={pushState === "enabling"} className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{pushState === "enabling" ? "Activando…" : "Activar avisos"}</button>}
+            <div>
+              <p className="font-black">
+                {pushState === "enabled"
+                  ? "🔔 Avisos operativos activados"
+                  : pushState === "fallback"
+                  ? "📡 Avisos internos activos"
+                  : "🔕 Activá los avisos urgentes"}
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                {pushState === "fallback"
+                  ? "Este navegador no admite Push del sistema. Mientras esta pantalla permanezca abierta, Alerta Otamendi revisará nuevas alertas automáticamente y mostrará alarma interna, sonido y vibración cuando el dispositivo lo permita."
+                  : "Recibirás las alertas de tu servicio correspondientes a esta jurisdicción."}
+              </p>
+
+              {pushState === "fallback" && (
+                <p className="mt-2 text-xs font-semibold text-cyan-200">
+                  Para recibir avisos con la pantalla cerrada, abrí el Acceso Operativo en Chrome/Edge compatible o instalalo como aplicación.
+                </p>
+              )}
+            </div>
+
+            {pushState !== "enabled" && pushState !== "fallback" && (
+              <button
+                type="button"
+                onClick={() => void enableOperationalAlerts()}
+                disabled={pushState === "enabling"}
+                className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+              >
+                {pushState === "enabling" ? "Activando…" : "Activar avisos"}
+              </button>
+            )}
           </div>
         </section>
 
