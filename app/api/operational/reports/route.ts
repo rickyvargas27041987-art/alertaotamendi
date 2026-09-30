@@ -52,7 +52,25 @@ export async function GET() {
     sessionId: session.id,
     details: `${reports.length} alertas visibles`,
   });
-  return NextResponse.json({ success: true, reports, zones });
+  const responseStates = reports.length
+    ? await prisma.operationalResponseState.findMany({
+        where: {
+          reportId: { in: reports.map((report) => report.id) },
+          serviceType: session.serviceType,
+        },
+      })
+    : [];
+
+  const stateByReport = new Map(
+    responseStates.map((state) => [state.reportId, state])
+  );
+
+  const enrichedReports = reports.map((report) => ({
+    ...report,
+    operationalState: stateByReport.get(report.id) ?? null,
+  }));
+
+  return NextResponse.json({ success: true, reports: enrichedReports, zones });
 }
 
 export async function POST(request: Request) {
@@ -61,7 +79,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const reportId = Number(body.reportId);
   const action = String(body.action || "");
-  if (!Number.isInteger(reportId) || !["view", "navigate"].includes(action)) {
+  const validActions = ["view", "navigate", "received", "en_route", "on_scene", "finished"];
+
+  if (!Number.isInteger(reportId) || !validActions.includes(action)) {
     return NextResponse.json({ success: false, error: "Operación inválida." }, { status: 400 });
   }
   const report = await prisma.report.findFirst({
@@ -69,9 +89,64 @@ export async function POST(request: Request) {
     select: { id: true },
   });
   if (!report) return NextResponse.json({ success: false, error: "Alerta fuera de la jurisdicción autorizada." }, { status: 403 });
-  await operationalAudit(session.configId, session.officerName, action === "navigate" ? "OPERATIONAL_NAVIGATION_OPENED" : "OPERATIONAL_REPORT_OPENED", {
-    sessionId: session.id,
-    reportId,
-  });
+  if (["received", "en_route", "on_scene", "finished"].includes(action)) {
+    const now = new Date();
+
+    const statusData =
+      action === "received"
+        ? { status: "received", receivedAt: now }
+        : action === "en_route"
+        ? { status: "en_route", receivedAt: now, enRouteAt: now }
+        : action === "on_scene"
+        ? { status: "on_scene", receivedAt: now, onSceneAt: now }
+        : { status: "finished", receivedAt: now, finishedAt: now };
+
+    const state = await prisma.operationalResponseState.upsert({
+      where: {
+        reportId_serviceType: {
+          reportId,
+          serviceType: session.serviceType,
+        },
+      },
+      create: {
+        reportId,
+        serviceType: session.serviceType,
+        officerName: session.officerName,
+        agency: session.agency,
+        ...statusData,
+      },
+      update: {
+        officerName: session.officerName,
+        agency: session.agency,
+        ...statusData,
+      },
+    });
+
+    await operationalAudit(
+      session.configId,
+      session.officerName,
+      `OPERATIONAL_STATUS_${action.toUpperCase()}`,
+      {
+        sessionId: session.id,
+        reportId,
+        details: `${session.agency} · ${session.serviceType} · ${action}`,
+      }
+    );
+
+    return NextResponse.json({ success: true, state });
+  }
+
+  await operationalAudit(
+    session.configId,
+    session.officerName,
+    action === "navigate"
+      ? "OPERATIONAL_NAVIGATION_OPENED"
+      : "OPERATIONAL_REPORT_OPENED",
+    {
+      sessionId: session.id,
+      reportId,
+    }
+  );
+
   return NextResponse.json({ success: true });
 }

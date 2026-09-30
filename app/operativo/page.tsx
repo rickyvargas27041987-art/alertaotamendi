@@ -34,6 +34,17 @@ type Report = {
   locality: string | null;
   aiPriority: string | null;
   aiSummary: string | null;
+  operationalState: {
+    id: number;
+    status: "pending" | "received" | "en_route" | "on_scene" | "finished";
+    officerName: string;
+    agency: string;
+    receivedAt: string | null;
+    enRouteAt: string | null;
+    onSceneAt: string | null;
+    finishedAt: string | null;
+    updatedAt: string;
+  } | null;
 };
 
 const serviceLabels: Record<string, string> = {
@@ -51,6 +62,23 @@ const categoryIcon: Record<string, string> = {
   Accidente: "⚠️",
   Incendio: "🔥",
   Emergencia: "🆘",
+  "Defensa Civil": "🛡️",
+};
+
+const operationalStateLabels: Record<string, string> = {
+  pending: "Pendiente",
+  received: "Recibido",
+  en_route: "En camino",
+  on_scene: "En el lugar",
+  finished: "Finalizado",
+};
+
+const operationalStateStyles: Record<string, string> = {
+  pending: "bg-slate-800 text-slate-300",
+  received: "bg-blue-950 text-blue-200",
+  en_route: "bg-amber-950 text-amber-200",
+  on_scene: "bg-violet-950 text-violet-200",
+  finished: "bg-emerald-950 text-emerald-200",
 };
 
 function priorityStyle(report: Report) {
@@ -237,6 +265,42 @@ export default function OperationalPage() {
     }
   }
 
+  async function setOperationalStatus(
+    report: Report,
+    action: "received" | "en_route" | "on_scene" | "finished"
+  ) {
+    setBusy(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/operational/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: report.id, action }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "No se pudo actualizar el estado operativo.");
+      }
+
+      await loadReports();
+      setSelected((current) =>
+        current && current.id === report.id
+          ? { ...current, operationalState: data.state }
+          : current
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo actualizar el estado operativo."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function navigate(report: Report, app: "google" | "waze") {
     if (report.latitude === null || report.longitude === null) return;
     void fetch("/api/operational/reports", {
@@ -331,7 +395,13 @@ export default function OperationalPage() {
             <button key={report.id} type="button" onClick={() => void openReport(report)} className={`w-full rounded-3xl border p-4 text-left shadow-lg ${priorityStyle(report)}`}>
               <div className="flex items-start justify-between gap-3">
                 <div><p className="font-black">{categoryIcon[report.category] || "📍"} {report.category === "Delito / Robo" ? "Hurto / Robo" : report.category}</p><p className="mt-1 text-xs text-slate-400">{new Date(report.createdAt).toLocaleString("es-AR")}</p></div>
-                <span className="rounded-full bg-black/25 px-2 py-1 text-[10px] font-bold uppercase">{report.status.replace("_", " ")}</span>
+                <span
+                  className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
+                    operationalStateStyles[report.operationalState?.status || "pending"]
+                  }`}
+                >
+                  {operationalStateLabels[report.operationalState?.status || "pending"]}
+                </span>
               </div>
               <p className="mt-3 line-clamp-2 text-sm text-slate-200">{report.description}</p>
               <p className="mt-2 text-xs text-slate-500">📍 {[report.locality, report.district, report.province].filter(Boolean).join(" · ") || "Ubicación disponible por coordenadas"}</p>
@@ -348,6 +418,63 @@ export default function OperationalPage() {
             {selected.aiSummary && <div className="mt-3 rounded-2xl border border-violet-800/50 bg-violet-950/30 p-4"><p className="text-xs font-bold uppercase text-violet-300">Resumen inteligente</p><p className="mt-2 text-sm text-slate-200">{selected.aiSummary}</p></div>}
             <div className="mt-3 rounded-2xl bg-slate-900 p-4"><p className="text-xs font-bold uppercase text-slate-500">Ubicación</p><p className="mt-2 font-semibold">{address || [selected.locality, selected.district, selected.province].filter(Boolean).join(" · ") || "Buscando dirección…"}</p><p className="mt-1 text-xs text-slate-500">{selected.latitude !== null && selected.longitude !== null ? `${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}` : "Sin coordenadas"}</p></div>
             {(selected.imageUrl || selected.videoUrl || selected.audioUrl) && <div className="mt-3 grid grid-cols-3 gap-2">{selected.imageUrl && <a href={selected.imageUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-slate-800 p-3 text-center text-xs font-bold">📷 Foto</a>}{selected.videoUrl && <a href={selected.videoUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-slate-800 p-3 text-center text-xs font-bold">🎥 Video</a>}{selected.audioUrl && <a href={selected.audioUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-slate-800 p-3 text-center text-xs font-bold">🎙️ Audio</a>}</div>}
+            <div className="mt-4 rounded-2xl border border-cyan-800/50 bg-cyan-950/20 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                Estado de intervención · {serviceLabels[session.serviceType] || session.serviceType}
+              </p>
+
+              <p className="mt-2 text-sm text-slate-400">
+                Estado actual:{" "}
+                <span className="font-black text-white">
+                  {operationalStateLabels[selected.operationalState?.status || "pending"]}
+                </span>
+              </p>
+
+              {selected.operationalState && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Última actualización por {selected.operationalState.officerName} · {selected.operationalState.agency}
+                </p>
+              )}
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void setOperationalStatus(selected, "received")}
+                  className="rounded-xl bg-blue-600 px-3 py-3 text-sm font-black disabled:opacity-50"
+                >
+                  ✓ Recibido
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void setOperationalStatus(selected, "en_route")}
+                  className="rounded-xl bg-amber-500 px-3 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                >
+                  🚙 En camino
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void setOperationalStatus(selected, "on_scene")}
+                  className="rounded-xl bg-violet-600 px-3 py-3 text-sm font-black disabled:opacity-50"
+                >
+                  📍 En el lugar
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void setOperationalStatus(selected, "finished")}
+                  className="rounded-xl bg-emerald-600 px-3 py-3 text-sm font-black disabled:opacity-50"
+                >
+                  ✔ Finalizado
+                </button>
+              </div>
+            </div>
+
             {selected.latitude !== null && selected.longitude !== null && <div className="mt-4 grid grid-cols-2 gap-3"><button type="button" onClick={() => navigate(selected, "google")} className="rounded-2xl bg-blue-600 py-4 font-black">🗺️ Google Maps</button><button type="button" onClick={() => navigate(selected, "waze")} className="rounded-2xl bg-cyan-600 py-4 font-black">🚙 Waze</button></div>}
             <p className="mt-4 text-xs leading-5 text-amber-200/80">Información reservada para uso operativo. No compartir públicamente ni utilizar fuera de la función autorizada.</p>
           </div>

@@ -374,6 +374,29 @@ model OperationalPushSubscription {
   @@index([sessionId, enabled])
 }
 
+model OperationalResponseState {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  serviceType String
+
+  status      String   @default("pending")
+  officerName String
+  agency      String
+
+  receivedAt  DateTime?
+  enRouteAt   DateTime?
+  onSceneAt   DateTime?
+  finishedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([reportId, serviceType])
+  @@index([reportId])
+  @@index([serviceType, status])
+  @@index([updatedAt])
+}
+
 model OperationalAuditLog {
   id        Int                   @id @default(autoincrement())
   configId  Int
