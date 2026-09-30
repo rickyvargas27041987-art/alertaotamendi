@@ -191,17 +191,38 @@ export default function OperationalPage() {
     setPushState("enabling");
     setError("");
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Este navegador no admite avisos push.");
+      if (!("serviceWorker" in navigator)) {
+        throw new Error("Este navegador no permite notificaciones operativas en segundo plano.");
+      }
+
+      if (!("Notification" in window)) {
+        throw new Error("Este navegador no expone el sistema de notificaciones.");
+      }
+
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicKey) throw new Error("Falta configurar la clave pública de notificaciones.");
+
+      await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.ready;
+
+      if (!registration.pushManager) {
+        throw new Error(
+          "Este navegador no permite avisos push en este modo. Abrí el Acceso Operativo en Chrome/Edge o instalalo como aplicación."
+        );
+      }
+
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setPushState("blocked");
         throw new Error("Los avisos están bloqueados. Habilitalos en los permisos del navegador.");
       }
-      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!publicKey) throw new Error("Falta configurar la clave pública de notificaciones.");
-      await navigator.serviceWorker.register("/sw.js");
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey(publicKey) });
+
+      const subscription =
+        (await registration.pushManager.getSubscription()) ||
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidKey(publicKey),
+        }));
       const json = subscription.toJSON();
       const response = await fetch("/api/operational/push", {
         method: "POST",
