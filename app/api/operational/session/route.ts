@@ -21,6 +21,7 @@ export async function DELETE() {
   if (session) {
     await prisma.$transaction([
       prisma.operationalPushSubscription.updateMany({ where: { sessionId: session.id }, data: { enabled: false } }),
+      prisma.operationalFcmDevice.updateMany({ where: { sessionId: session.id }, data: { enabled: false } }),
       prisma.operationalSession.update({ where: { id: session.id }, data: { revokedAt: new Date() } }),
     ]);
     await operationalAudit(session.configId, session.officerName, "OPERATIONAL_LOGOUT", { sessionId: session.id });

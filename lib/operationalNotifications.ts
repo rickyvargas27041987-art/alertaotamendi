@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendWebPush } from "@/lib/webPush";
+import { sendFcmNotification } from "@/lib/fcm";
 import { configZones, type OperationalZone, type ServiceType } from "@/lib/operationalAccess";
 
 type OperationalReport = {
@@ -58,6 +59,35 @@ async function notifyServices(report: OperationalReport, services: ServiceType[]
       item.session.revision === item.session.config.revision &&
       zoneMatches(report, configZones(item.session.config))
     );
+    const fcmDevices = await prisma.operationalFcmDevice.findMany({
+      where: {
+        enabled: true,
+        session: {
+          serviceType: { in: services },
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      },
+      include: {
+        session: {
+          include: {
+            config: {
+              include: {
+                ownerUser: {
+                  include: { zones: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const fcmRecipients = fcmDevices.filter((item) =>
+      item.session.revision === item.session.config.revision &&
+      zoneMatches(report, configZones(item.session.config))
+    );
+
     const area = [report.locality, report.district].filter(Boolean).join(" · ");
     await Promise.allSettled(recipients.map(async (item) => {
       const result = await sendWebPush(item, {
@@ -72,9 +102,38 @@ async function notifyServices(report: OperationalReport, services: ServiceType[]
         channel: "operational",
       });
       if (!result.ok && [404, 410].includes(result.status)) {
-        await prisma.operationalPushSubscription.update({ where: { id: item.id }, data: { enabled: false } });
+        await prisma.operationalPushSubscription.update({
+          where: { id: item.id },
+          data: { enabled: false },
+        });
       }
     }));
+
+    await Promise.allSettled(
+      fcmRecipients.map(async (item) => {
+        const result = await sendFcmNotification(item.token, {
+          title: preventive
+            ? "⚠️ Patrón preventivo detectado"
+            : `🚨 ${
+                report.category === "Delito / Robo"
+                  ? "Hurto / Robo"
+                  : report.category
+              } · aviso operativo`,
+          body: `${area || "Jurisdicción asignada"}: ${report.description.slice(0, 180)}`,
+          url: `/operativo?report=${report.id}`,
+          tag: `operational-report-${report.id}`,
+          reportId: report.id,
+          priority: "critical",
+        });
+
+        if (result.invalidToken) {
+          await prisma.operationalFcmDevice.update({
+            where: { id: item.id },
+            data: { enabled: false },
+          });
+        }
+      })
+    );
   } catch (error) {
     // Un fallo de notificación nunca debe impedir que el reporte se guarde.
     console.error("No se pudieron enviar avisos al personal operativo:", error);
