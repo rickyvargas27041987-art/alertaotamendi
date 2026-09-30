@@ -927,6 +927,14 @@ const [aiError, setAiError] = useState<string | null>(null);
               🖥️ Mapa grande
             </a>
             {!isInstitutional && <OperationalAccessPanel />}
+            {!isInstitutional && (
+              <a
+                href="/admin/seguimientos"
+                className="rounded-2xl border border-cyan-500/40 bg-cyan-950/30 px-4 py-3 text-sm font-semibold text-cyan-100 hover:bg-cyan-900/50"
+              >
+                🎯 Seguimientos
+              </a>
+            )}
             {currentUser?.role === "ADMIN" && (
               <a
                 href="/admin/usuarios"

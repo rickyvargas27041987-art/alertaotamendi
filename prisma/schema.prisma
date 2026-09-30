@@ -120,6 +120,42 @@ model VehicleMatch {
   @@index([confidence])
 }
 
+model TrackingTarget {
+  id Int @id @default(autoincrement())
+
+  type        String
+  title       String
+  reason      String
+  description String?
+  imageUrl    String?
+
+  province String?
+  district String?
+  locality String?
+
+  active        Boolean   @default(true)
+  createdById   Int?
+  createdByName String
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  personAge      String?
+  personFeatures String?
+
+  vehiclePlate String?
+  vehicleMake  String?
+  vehicleModel String?
+  vehicleColor String?
+  vehicleType  String?
+  distinctive  String?
+
+  @@index([type, active])
+  @@index([province, district, locality])
+  @@index([vehiclePlate])
+  @@index([createdAt])
+}
+
 model PersonPatternAlert {
   id Int @id @default(autoincrement())
 
