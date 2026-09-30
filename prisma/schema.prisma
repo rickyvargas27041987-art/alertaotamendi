@@ -156,6 +156,36 @@ model TrackingTarget {
   @@index([createdAt])
 }
 
+model TrackingMatch {
+  id Int @id @default(autoincrement())
+
+  trackingTargetId Int
+  reportId         Int
+
+  confidence Float
+  reason     String
+  status     String @default("pendiente")
+
+  reportImageUrl String?
+  reportCategory String
+  reportProvince String?
+  reportDistrict String?
+  reportLocality String?
+
+  reviewedById   Int?
+  reviewedByName String?
+  reviewedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([trackingTargetId, reportId])
+  @@index([trackingTargetId, status])
+  @@index([reportId])
+  @@index([confidence])
+  @@index([createdAt])
+}
+
 model PersonPatternAlert {
   id Int @id @default(autoincrement())
 

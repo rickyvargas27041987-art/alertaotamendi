@@ -9,6 +9,7 @@ import {
 import { sendFcmNotification } from "@/lib/fcm";
 import { resolveJurisdiction } from "@/lib/jurisdiction";
 import { consumeRateLimit } from "@/lib/rateLimit";
+import { evaluateTrackingMatches } from "@/lib/trackingMatcher";
 
 export const maxDuration = 60;
 
@@ -1024,6 +1025,7 @@ export async function POST(
         } else {
           tasks.push(notifyNearbyReport(enrichedReport));
         }
+        tasks.push(evaluateTrackingMatches(enrichedReport));
         tasks.push(notifyOperationalResponders(enrichedReport));
         await Promise.allSettled(tasks);
       } catch (error) {

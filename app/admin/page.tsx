@@ -935,6 +935,14 @@ const [aiError, setAiError] = useState<string | null>(null);
                 🎯 Seguimientos
               </a>
             )}
+            {!isInstitutional && (
+              <a
+                href="/admin/coincidencias"
+                className="rounded-2xl border border-amber-500/40 bg-amber-950/25 px-4 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-900/40"
+              >
+                ⚠️ Coincidencias
+              </a>
+            )}
             {currentUser?.role === "ADMIN" && (
               <a
                 href="/admin/usuarios"
