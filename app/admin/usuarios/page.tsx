@@ -49,9 +49,9 @@ const statusLabel: Record<string, string> = {
 };
 const roleLabel: Record<string, string> = {
   ADMIN: "Superadministrador",
-  CENTER_ADMIN: "Administrador del centro",
+  CENTER_ADMIN: "Administrador del organismo",
   OPERATOR: "Operador",
-  INSTITUTIONAL: "Consulta institucional",
+  INSTITUTIONAL: "Visualizador / Consulta",
 };
 
 const organizationLabel: Record<string, string> = {
@@ -198,8 +198,8 @@ function UserAccessEditor({
           <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
             {user.role === "ADMIN" && <option value="ADMIN">Superadministrador</option>}
             <option value="OPERATOR">Operador</option>
-            <option value="INSTITUTIONAL">Consulta institucional (civil)</option>
-            <option value="CENTER_ADMIN">Administrador del centro</option>
+            <option value="INSTITUTIONAL">Visualizador / Consulta</option>
+            <option value="CENTER_ADMIN">Administrador del organismo</option>
           </select>
         </label>
         <label className="text-sm text-slate-300">Provincia
