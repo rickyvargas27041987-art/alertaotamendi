@@ -941,7 +941,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           </div>
         </header>
 
-        <section className={`mb-3 grid items-start gap-3 ${operationalView ? "xl:grid-cols-[minmax(0,1fr)_250px]" : "xl:grid-cols-[150px_minmax(0,1fr)_220px]"}`}>
+        <section className={`mb-3 grid items-start gap-3 ${operationalView ? "xl:grid-cols-[minmax(0,1fr)_250px]" : "xl:grid-cols-[175px_minmax(0,1fr)_260px]"}`}>
           <aside className={`${operationalView ? "hidden" : "block"} min-w-0 space-y-2`}>
             <div className="rounded-3xl border border-red-500/30 bg-red-950/35 p-3">
               <div className="flex items-start justify-between gap-2">
@@ -972,7 +972,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   <span>🟠</span>
                 </div>
                 <p className="mt-1 text-3xl font-black">{totals.high}</p>
-                <p className="mt-1 text-[11px] text-slate-500">Accidentes e incendios</p>
+                <p className="mt-1 text-xs text-slate-500">Accidentes e incendios</p>
               </div>
               <div className="rounded-3xl border border-yellow-500/25 bg-yellow-950/20 p-3">
                 <div className="flex items-center justify-between">
@@ -980,7 +980,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   <span>🟡</span>
                 </div>
                 <p className="mt-1 text-3xl font-black">{totals.normal}</p>
-                <p className="mt-1 text-[11px] text-slate-500">Personas y vehículos</p>
+                <p className="mt-1 text-xs text-slate-500">Personas y vehículos</p>
               </div>
             </div>
 
@@ -996,6 +996,8 @@ const [aiError, setAiError] = useState<string | null>(null);
               </div>
               <div className="mt-1">Actualización automática: 3 s</div>
             </div>
+
+            {currentUser?.role === "ADMIN" && <AppUserStatistics compact />}
           </aside>
 
           <div ref={mapSectionRef} className="min-w-0 scroll-mt-4">
@@ -1020,15 +1022,15 @@ const [aiError, setAiError] = useState<string | null>(null);
             {operationalView && (
               <div className="mb-2 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase text-red-300">Críticas</p>
+                  <p className="text-xs font-bold uppercase text-red-300">Críticas</p>
                   <p className="text-xl font-black">{totals.critical}</p>
                 </div>
                 <div className="rounded-xl border border-orange-500/25 bg-orange-950/25 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase text-orange-300">Altas</p>
+                  <p className="text-xs font-bold uppercase text-orange-300">Altas</p>
                   <p className="text-xl font-black">{totals.high}</p>
                 </div>
                 <div className="rounded-xl border border-yellow-500/25 bg-yellow-950/20 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase text-yellow-300">Normales</p>
+                  <p className="text-xs font-bold uppercase text-yellow-300">Normales</p>
                   <p className="text-xl font-black">{totals.normal}</p>
                 </div>
               </div>
@@ -1046,14 +1048,14 @@ const [aiError, setAiError] = useState<string | null>(null);
             />
           </div>
 
-          <aside className="min-w-0 space-y-3">
+          <aside className="min-w-0 space-y-3 xl:max-h-[calc(100vh-175px)] xl:overflow-y-auto xl:pr-1">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-400">Atención</p>
-                  <h2 className="text-sm font-black leading-4">Prioridad inmediata</h2>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-400">Atención</p>
+                  <h2 className="text-base font-black leading-5">Prioridad inmediata</h2>
                 </div>
-                <span className="rounded-full bg-slate-950 px-2 py-1 text-[11px] text-slate-400">Top 5</span>
+                <span className="rounded-full bg-slate-950 px-2 py-1 text-xs text-slate-400">Top 5</span>
               </div>
 
               <div className="space-y-2">
@@ -1071,24 +1073,24 @@ const [aiError, setAiError] = useState<string | null>(null);
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[11px] font-bold leading-4 break-words">
+                        <p className="text-sm font-bold leading-5 break-words">
                           {categoryEmoji(report.category)} {displayCategory(report.category)}
                         </p>
-                        <p className="mt-1 text-[11px] text-slate-500">
+                        <p className="mt-1 text-xs text-slate-500">
                           #{report.id} · {relativeTime(report.createdAt)}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(report.status)}`}>
+                      <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-bold ${statusClass(report.status)}`}>
                         {statusLabel(report.status)}
                       </span>
                     </div>
 
-                    <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-slate-400">
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">
                       {report.description || "Información general disponible en la vista institucional."}
                     </p>
 
                     {alertasCriticasPendientes.includes(report.id) && (
-                      <span className="mt-2 inline-flex rounded-full bg-red-600 px-2 py-1 text-[10px] font-black animate-pulse">
+                      <span className="mt-2 inline-flex rounded-full bg-red-600 px-2 py-1 text-[11px] font-black animate-pulse">
                         SIN REVISAR
                       </span>
                     )}
@@ -1100,15 +1102,15 @@ const [aiError, setAiError] = useState<string | null>(null);
             {!isInstitutional && <div className="rounded-3xl border border-cyan-500/25 bg-cyan-950/10 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-300">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">
                     🚗 Vehículos
                   </p>
-                  <h2 className="text-sm font-black leading-4">
+                  <h2 className="text-base font-black leading-5">
                     En seguimiento
                   </h2>
                 </div>
 
-                <span className="rounded-full border border-cyan-500/20 bg-slate-950 px-2 py-1 text-[11px] font-bold text-cyan-300">
+                <span className="rounded-full border border-cyan-500/20 bg-slate-950 px-2 py-1 text-xs font-bold text-cyan-300">
                   {vehicleWatches.length}
                 </span>
               </div>
@@ -1123,7 +1125,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   <p className="mt-2 text-xs font-bold text-slate-300">
                     Sin vehículos en seguimiento
                   </p>
-                  <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
                     Abrí un reporte con foto y agregalo desde el detalle.
                   </p>
                 </div>
@@ -1144,20 +1146,20 @@ const [aiError, setAiError] = useState<string | null>(null);
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="text-[11px] font-black text-white">
+                              <p className="text-sm font-black text-white">
                                 Reporte #{vehicle.sourceReportId}
                               </p>
-                              <p className="mt-0.5 text-[10px] text-slate-500">
+                              <p className="mt-0.5 text-xs text-slate-500">
                                 {relativeTime(vehicle.createdAt)}
                               </p>
                             </div>
 
-                            <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[9px] font-black text-emerald-300">
+                            <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[11px] font-black text-emerald-300">
                               ACTIVO
                             </span>
                           </div>
 
-                          <div className="mt-2 space-y-1 text-[10px] leading-4">
+                          <div className="mt-2 space-y-1 text-xs leading-5">
                             <p>
                               <span className="text-slate-500">Patente:</span>{" "}
                               <span className="font-bold text-white">
@@ -1193,7 +1195,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                       </div>
 
                       {(vehicle.distinctive || vehicle.visualSummary) && (
-                        <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2 text-[10px] leading-4">
+                        <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2 text-xs leading-5">
                           {vehicle.distinctive && (
                             <p className="text-slate-300">
                               <span className="font-bold text-slate-500">Rasgos:</span>{" "}
@@ -1212,7 +1214,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <button
                           onClick={() => openVehicleSourceReport(vehicle.sourceReportId)}
-                          className="rounded-lg border border-slate-700 px-2 py-2 text-[10px] font-bold text-slate-200 hover:bg-slate-800"
+                          className="rounded-lg border border-slate-700 px-2 py-2 text-xs font-bold text-slate-200 hover:bg-slate-800"
                         >
                           Ver reporte
                         </button>
@@ -1220,7 +1222,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                         <button
                           onClick={() => void finishVehicleWatch(vehicle.id)}
                           disabled={vehicleWatchActionId === vehicle.id}
-                          className="rounded-lg border border-red-500/30 bg-red-950/30 px-2 py-2 text-[10px] font-bold text-red-300 hover:bg-red-950/50 disabled:opacity-50"
+                          className="rounded-lg border border-red-500/30 bg-red-950/30 px-2 py-2 text-xs font-bold text-red-300 hover:bg-red-950/50 disabled:opacity-50"
                         >
                           Finalizar
                         </button>
@@ -1231,7 +1233,6 @@ const [aiError, setAiError] = useState<string | null>(null);
               )}
             </div>}
 
-            {currentUser?.role === "ADMIN" && !operationalView && <AppUserStatistics />}
           </aside>
         </section>
 
@@ -1239,7 +1240,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           <section className="mb-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Acceso rápido</p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Acceso rápido</p>
                 <h3 className="text-sm font-black">🚨 Reportes activos recientes</h3>
               </div>
               <button
@@ -1258,9 +1259,9 @@ const [aiError, setAiError] = useState<string | null>(null);
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="truncate text-xs font-black">{categoryEmoji(report.category)} {displayCategory(report.category)}</p>
-                    <span className="shrink-0 text-[10px] text-slate-500">#{report.id}</span>
+                    <span className="shrink-0 text-xs text-slate-500">#{report.id}</span>
                   </div>
-                  <p className="mt-1 truncate text-[10px] text-slate-500">{relativeTime(report.createdAt)} · {statusLabel(report.status)}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500">{relativeTime(report.createdAt)} · {statusLabel(report.status)}</p>
                 </button>
               ))}
             </div>
@@ -1483,7 +1484,7 @@ const [aiError, setAiError] = useState<string | null>(null);
                   {historyReports.map((report) => (
                     <button key={report.id} onClick={() => { setHistoryOpen(false); openReport(report); }} className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-left hover:border-violet-500/60 hover:bg-slate-900">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2"><span className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-black">#{report.id}</span><span className="font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</span><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusClass(report.status)}`}>{statusLabel(report.status)}</span></div>
+                        <div className="flex flex-wrap items-center gap-2"><span className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-black">#{report.id}</span><span className="font-bold">{categoryEmoji(report.category)} {displayCategory(report.category)}</span><span className={`rounded-full border px-2 py-1 text-[11px] font-bold ${statusClass(report.status)}`}>{statusLabel(report.status)}</span></div>
                         <span className="text-xs text-slate-500">{formatDate(report.createdAt)}</span>
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm text-slate-300">{report.description || "Detalle protegido · vista institucional"}</p>

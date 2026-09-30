@@ -15,7 +15,7 @@ type UserStatistics = {
   withoutLocation: number;
 };
 
-export default function AppUserStatistics() {
+export default function AppUserStatistics({ compact = false }: { compact?: boolean }) {
   const [statistics, setStatistics] = useState<UserStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -54,13 +54,13 @@ export default function AppUserStatistics() {
   }, [loadStatistics]);
 
   return (
-    <div className="rounded-3xl border border-violet-500/25 bg-violet-950/10 p-3">
+    <div className={`rounded-3xl border border-violet-500/25 bg-violet-950/10 ${compact ? "p-2.5" : "p-3"}`}>
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-300">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-300">
             👥 Usuarios de la app
           </p>
-          <h2 className="text-sm font-black">Altas y ubicación</h2>
+          <h2 className={`${compact ? "text-xs" : "text-sm"} font-black`}>Altas y ubicación</h2>
         </div>
         <button
           type="button"
@@ -81,26 +81,26 @@ export default function AppUserStatistics() {
         </p>
       ) : statistics ? (
         <>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl border border-violet-500/20 bg-slate-950 p-3">
-              <p className="text-[10px] uppercase text-slate-500">Nuevos hoy</p>
-              <p className="mt-1 text-2xl font-black text-violet-200">
+          <div className={`mt-3 grid ${compact ? "grid-cols-1" : "grid-cols-2"} gap-2`}>
+            <div className={`rounded-2xl border border-violet-500/20 bg-slate-950 ${compact ? "p-2.5" : "p-3"}`}>
+              <p className="text-[11px] uppercase text-slate-500">Nuevos hoy</p>
+              <p className="mt-1 text-xl font-black text-violet-200">
                 {statistics.newUsers.today}
               </p>
             </div>
-            <div className="rounded-2xl border border-violet-500/20 bg-slate-950 p-3">
-              <p className="text-[10px] uppercase text-slate-500">Esta semana</p>
-              <p className="mt-1 text-2xl font-black text-violet-200">
+            <div className={`rounded-2xl border border-violet-500/20 bg-slate-950 ${compact ? "p-2.5" : "p-3"}`}>
+              <p className="text-[11px] uppercase text-slate-500">Esta semana</p>
+              <p className="mt-1 text-xl font-black text-violet-200">
                 {statistics.newUsers.thisWeek}
               </p>
             </div>
           </div>
 
           <div className="mt-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
               Por localidad / partido
             </p>
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto pr-1">
+            <div className="mt-2 max-h-36 space-y-1.5 overflow-y-auto pr-1">
               {statistics.locations.length === 0 ? (
                 <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-500">
                   Todavía no hay ubicaciones registradas.
@@ -109,10 +109,10 @@ export default function AppUserStatistics() {
                 statistics.locations.map((location) => (
                   <div
                     key={`${location.province}-${location.district}-${location.locality}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-2.5"
+                    className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-slate-200">
+                      <p className="truncate text-[11px] font-bold text-slate-200">
                         {location.locality || location.district}
                       </p>
                       <p className="truncate text-[10px] text-slate-500">
@@ -123,7 +123,7 @@ export default function AppUserStatistics() {
                           .join(" · ")}
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-violet-500/15 px-2 py-1 text-xs font-black text-violet-200">
+                    <span className="shrink-0 rounded-full bg-violet-500/15 px-2 py-1 text-[11px] font-black text-violet-200">
                       {location.count}
                     </span>
                   </div>
