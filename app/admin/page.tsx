@@ -265,6 +265,7 @@ const [aiError, setAiError] = useState<string | null>(null);
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
   const [emergencyMode, setEmergencyMode] = useState(false);
+  const [operationalView, setOperationalView] = useState(false);
   const [operationLoading, setOperationLoading] = useState(false);
   const [timeline, setTimeline] = useState<Array<{ id: number | string; actorName: string; action: string; details: string | null; createdAt: string }>>([]);
   const isInstitutional = currentUser?.role === "INSTITUTIONAL";
@@ -885,6 +886,13 @@ const [aiError, setAiError] = useState<string | null>(null);
 
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={() => setOperationalView((value) => !value)}
+              className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${operationalView ? "border-cyan-300 bg-cyan-600 text-white shadow-lg shadow-cyan-950/40" : "border-cyan-500/40 bg-cyan-950/30 text-cyan-100 hover:bg-cyan-900/50"}`}
+              title="Amplía el mapa y compacta los paneles para trabajo operativo"
+            >
+              {operationalView ? "🖥️ VISTA OPERATIVA" : "🖥️ Modo operativo"}
+            </button>
+            <button
               onClick={() => setEmergencyMode((value) => !value)}
               className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${emergencyMode ? "border-red-300 bg-red-600 text-white shadow-lg shadow-red-950/40 animate-pulse" : "border-red-500/40 bg-red-950/30 text-red-200 hover:bg-red-900/50"}`}
               title="Oculta temporalmente lo no urgente para concentrar la operación"
@@ -933,8 +941,8 @@ const [aiError, setAiError] = useState<string | null>(null);
           </div>
         </header>
 
-        <section className="mb-4 grid gap-3 xl:grid-cols-[165px_minmax(0,1fr)_235px]">
-          <aside className="min-w-0 space-y-2">
+        <section className={`mb-3 grid items-start gap-3 ${operationalView ? "xl:grid-cols-[minmax(0,1fr)_250px]" : "xl:grid-cols-[150px_minmax(0,1fr)_220px]"}`}>
+          <aside className={`${operationalView ? "hidden" : "block"} min-w-0 space-y-2`}>
             <div className="rounded-3xl border border-red-500/30 bg-red-950/35 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -1008,11 +1016,29 @@ const [aiError, setAiError] = useState<string | null>(null);
                 <option value="todas">Todas</option>
               </select>
             </div>
+
+            {operationalView && (
+              <div className="mb-2 grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-red-300">Críticas</p>
+                  <p className="text-xl font-black">{totals.critical}</p>
+                </div>
+                <div className="rounded-xl border border-orange-500/25 bg-orange-950/25 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-orange-300">Altas</p>
+                  <p className="text-xl font-black">{totals.high}</p>
+                </div>
+                <div className="rounded-xl border border-yellow-500/25 bg-yellow-950/20 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-yellow-300">Normales</p>
+                  <p className="text-xl font-black">{totals.normal}</p>
+                </div>
+              </div>
+            )}
+
             <MapaAlertas
               reports={mapReports}
               mode="admin"
               onSelectReport={(report) => openReport(report as Report)}
-              heightClassName="h-[calc(100vh-285px)] min-h-[360px] max-h-[500px]"
+              heightClassName={operationalView ? "h-[calc(100vh-190px)] min-h-[560px] max-h-[820px]" : "h-[calc(100vh-220px)] min-h-[500px] max-h-[700px]"}
               focusTarget={mapFocusTarget}
               monitorZones={currentUser?.zones ?? []}
               onOpenHistory={() => { setHistoryOpen(true); setHistoryTab("historial"); }}
@@ -1205,9 +1231,41 @@ const [aiError, setAiError] = useState<string | null>(null);
               )}
             </div>}
 
-            {currentUser?.role === "ADMIN" && <AppUserStatistics />}
+            {currentUser?.role === "ADMIN" && !operationalView && <AppUserStatistics />}
           </aside>
         </section>
+
+        {!operationalView && attentionReports.length > 0 && (
+          <section className="mb-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Acceso rápido</p>
+                <h3 className="text-sm font-black">🚨 Reportes activos recientes</h3>
+              </div>
+              <button
+                onClick={() => document.getElementById("alert-list")?.scrollIntoView({ behavior: "smooth" })}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800"
+              >
+                Ver todos
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {attentionReports.slice(0, 4).map((report) => (
+                <button
+                  key={`quick-${report.id}`}
+                  onClick={() => openReport(report)}
+                  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-left transition hover:border-slate-600 hover:bg-slate-900"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="truncate text-xs font-black">{categoryEmoji(report.category)} {displayCategory(report.category)}</p>
+                    <span className="shrink-0 text-[10px] text-slate-500">#{report.id}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[10px] text-slate-500">{relativeTime(report.createdAt)} · {statusLabel(report.status)}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {currentUser?.role === "ADMIN" && totals.unassignedJurisdiction > 0 && (
           <button
@@ -1223,7 +1281,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           </button>
         )}
 
-        <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
+        {!operationalView && <section className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-5">
           {[
             ["Total", totals.total, "text-white"],
             ["Pendientes", totals.pending, "text-orange-300"],
@@ -1236,7 +1294,7 @@ const [aiError, setAiError] = useState<string | null>(null);
               <p className={`mt-1 text-3xl font-black ${color}`}>{value}</p>
             </div>
           ))}
-        </section>
+        </section>}
 
         <section id="alert-list" className="scroll-mt-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
