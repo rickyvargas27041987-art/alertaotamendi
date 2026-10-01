@@ -1543,10 +1543,10 @@ export default function Home() {
                 setMessage("");
                 window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
               }}
-              className={`min-h-36 rounded-3xl border p-4 text-left transition-all duration-150 active:translate-y-[2px] active:scale-[0.985] ${
+              className={`relative min-h-36 overflow-hidden rounded-3xl border-2 p-4 text-left transition-all duration-150 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-10 before:rounded-full before:bg-gradient-to-b before:from-white/10 before:to-transparent before:blur-md active:translate-y-[2px] active:scale-[0.985] ${
                 selected === category.title
-                  ? "border-red-400/70 bg-gradient-to-b from-red-950/55 via-black to-black ring-2 ring-red-500/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_3px_0_rgba(127,29,29,0.70),0_10px_22px_rgba(0,0,0,0.36)]"
-                  : "border-red-900/65 bg-gradient-to-b from-red-950/35 via-[#090909] to-black shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_4px_0_rgba(69,10,10,0.82),0_11px_24px_rgba(0,0,0,0.34)] hover:border-red-700/70 hover:from-red-950/45 active:shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_1px_0_rgba(69,10,10,0.82),0_4px_10px_rgba(0,0,0,0.22)]"
+                  ? "border-red-400 bg-[#020305] ring-1 ring-red-400/40 shadow-[0_0_5px_rgba(255,35,55,0.95),0_0_14px_rgba(255,20,45,0.85),0_0_28px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.50)]"
+                  : "border-red-500 bg-[#020305] shadow-[0_0_4px_rgba(255,35,55,0.90),0_0_12px_rgba(255,20,45,0.78),0_0_24px_rgba(255,0,35,0.34),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_rgba(120,0,15,0.42)] hover:border-red-400 hover:shadow-[0_0_5px_rgba(255,45,65,0.98),0_0_15px_rgba(255,25,50,0.88),0_0_30px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.48)] active:shadow-[0_0_3px_rgba(255,35,55,0.85),0_0_9px_rgba(255,20,45,0.62),inset_0_1px_0_rgba(255,255,255,0.05)]"
               }`}
             >
               <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 ${category.color} text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_8px_rgba(0,0,0,0.28)]`}>
