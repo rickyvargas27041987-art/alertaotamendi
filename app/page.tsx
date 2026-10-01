@@ -1545,13 +1545,15 @@ export default function Home() {
               }}
               className={`min-h-36 rounded-3xl border p-4 text-left transition-all duration-150 active:translate-y-[2px] active:scale-[0.985] ${
                 selected === category.title
-                  ? "border-white/50 bg-gradient-to-b from-slate-700 to-slate-850 ring-2 ring-white/10 shadow-[0_3px_0_rgba(15,23,42,0.9),0_8px_18px_rgba(0,0,0,0.28)]"
-                  : "border-slate-700/80 bg-gradient-to-b from-slate-850 to-slate-950 shadow-[0_4px_0_rgba(15,23,42,0.95),0_10px_22px_rgba(0,0,0,0.25)] hover:border-slate-600 hover:from-slate-800 hover:to-slate-900 active:shadow-[0_1px_0_rgba(15,23,42,0.95),0_4px_10px_rgba(0,0,0,0.2)]"
+                  ? "border-red-400/70 bg-gradient-to-b from-red-950/55 via-black to-black ring-2 ring-red-500/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_3px_0_rgba(127,29,29,0.70),0_10px_22px_rgba(0,0,0,0.36)]"
+                  : "border-red-900/65 bg-gradient-to-b from-red-950/35 via-[#090909] to-black shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_4px_0_rgba(69,10,10,0.82),0_11px_24px_rgba(0,0,0,0.34)] hover:border-red-700/70 hover:from-red-950/45 active:shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_1px_0_rgba(69,10,10,0.82),0_4px_10px_rgba(0,0,0,0.22)]"
               }`}
             >
-              <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl ${category.color} text-xl`}>{category.icon}</div>
-              <p className="text-sm font-bold">{category.label ?? category.title}</p>
-              <p className="mt-1 text-[11px] leading-4 text-slate-500">{category.helper}</p>
+              <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 ${category.color} text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_8px_rgba(0,0,0,0.28)]`}>
+                {category.icon}
+              </div>
+              <p className="text-sm font-black text-white">{category.label ?? category.title}</p>
+              <p className="mt-1 text-[11px] leading-4 text-slate-400">{category.helper}</p>
             </button>
           ))}
         </section>
