@@ -7,6 +7,7 @@ type FcmPayload = {
   tag: string;
   reportId?: number;
   priority?: "critical" | "high" | "normal";
+  channel?: "public" | "operational";
 };
 
 type CachedAccessToken = { value: string; expiresAt: number };
@@ -93,21 +94,18 @@ export async function sendFcmNotification(token: string, payload: FcmPayload): P
       body: JSON.stringify({
         message: {
           token,
-          notification: { title: payload.title, body: payload.body },
           data: {
+            title: payload.title,
+            body: payload.body,
             url: payload.url,
             tag: payload.tag,
             reportId: payload.reportId ? String(payload.reportId) : "",
             priority: payload.priority ?? "normal",
+            channel: payload.channel ?? "public",
           },
           android: {
             priority: payload.priority === "normal" ? "normal" : "high",
-            notification: {
-              sound: "default",
-              tag: payload.tag,
-              channel_id: "alertas_importantes",
-              default_vibrate_timings: true,
-            },
+            ttl: payload.channel === "operational" ? "1800s" : "3600s",
           },
         },
       }),

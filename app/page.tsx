@@ -9,6 +9,8 @@ declare global {
       isNativeAndroid: () => boolean;
       getFcmToken: () => string;
       areNotificationsEnabled: () => boolean;
+      savePublicNotificationLocation?: (latitude: number, longitude: number) => void;
+      clearPublicNotificationRegistration?: () => void;
     };
   }
 }
@@ -308,6 +310,12 @@ export default function Home() {
       );
     }
 
+    try {
+      window.AlertaAndroid?.savePublicNotificationLocation?.(lat, lon);
+    } catch {
+      // El servidor ya quedó registrado; el respaldo nativo se actualizará al próximo inicio.
+    }
+
     return true;
   }
 
@@ -375,6 +383,12 @@ export default function Home() {
     setNotificationBusy(true);
     try {
       if (hasNativeAndroidBridge()) {
+        try {
+          window.AlertaAndroid?.clearPublicNotificationRegistration?.();
+        } catch {
+          // El endpoint igualmente desactiva el token actual.
+        }
+
         const token = await getNativeFcmToken().catch(() => "");
         if (token) {
           await fetch("/api/fcm/unsubscribe", {

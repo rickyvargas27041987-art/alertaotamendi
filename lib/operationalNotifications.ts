@@ -124,6 +124,7 @@ async function notifyServices(report: OperationalReport, services: ServiceType[]
           tag: `operational-report-${report.id}`,
           reportId: report.id,
           priority: "critical",
+          channel: "operational",
         });
 
         if (result.invalidToken) {

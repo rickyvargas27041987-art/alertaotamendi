@@ -3,7 +3,44 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+declare global {
+  interface Window {
+    AlertaAndroid?: {
+      isNativeAndroid: () => boolean;
+      getFcmToken: () => string;
+      areNotificationsEnabled: () => boolean;
+      savePublicNotificationLocation?: (latitude: number, longitude: number) => void;
+      clearPublicNotificationRegistration?: () => void;
+    };
+  }
+}
+
 type PushAlert = { title: string; body: string; reportId?: number | null; channel?: string };
+
+function hasNativeAndroidBridge() {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.AlertaAndroid?.isNativeAndroid === "function" &&
+      window.AlertaAndroid.isNativeAndroid()
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function getNativeFcmToken() {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      const token = window.AlertaAndroid?.getFcmToken?.()?.trim() || "";
+      if (token.length >= 40) return token;
+    } catch {
+      // El token puede tardar unos instantes después de iniciar Android.
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+  }
+  throw new Error("Android todavía no entregó el token FCM.");
+}
 
 function vapidKey(value: string) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
@@ -100,10 +137,11 @@ export default function OperationalPage() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Report | null>(null);
   const [address, setAddress] = useState("");
-  const [pushState, setPushState] = useState<"idle" | "enabling" | "enabled" | "fallback" | "blocked">("idle");
+  const [pushState, setPushState] = useState<"idle" | "enabling" | "enabled" | "native" | "fallback" | "blocked">("idle");
   const [incomingAlert, setIncomingAlert] = useState<PushAlert | null>(null);
   const requestedReportRef = useRef<number | null>(null);
   const fallbackKnownReportsRef = useRef<Set<number>>(new Set());
+  const nativeFcmTokenRef = useRef("");
 
   const loadReports = useCallback(async () => {
     const response = await fetch("/api/operational/reports", { cache: "no-store" });
@@ -261,10 +299,61 @@ export default function OperationalPage() {
     return () => window.clearInterval(interval);
   }, [session, pushState]);
 
+  const registerNativeOperationalFcm = useCallback(async () => {
+    if (!session || !hasNativeAndroidBridge()) return false;
+
+    const allowed = window.AlertaAndroid?.areNotificationsEnabled?.() ?? false;
+    if (!allowed) {
+      setPushState("blocked");
+      setError("Las notificaciones de Alerta Otamendi están desactivadas en Android.");
+      return false;
+    }
+
+    const token = await getNativeFcmToken();
+    if (nativeFcmTokenRef.current === token && pushState === "native") {
+      return true;
+    }
+
+    const response = await fetch("/api/operational/fcm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.error || "No se pudo registrar Android para avisos operativos.");
+    }
+
+    nativeFcmTokenRef.current = token;
+    setPushState("native");
+    setError("");
+    return true;
+  }, [session, pushState]);
+
+  useEffect(() => {
+    if (!session || !hasNativeAndroidBridge()) return;
+
+    void registerNativeOperationalFcm().catch((err: Error) => {
+      setError(err.message);
+    });
+
+    const interval = window.setInterval(() => {
+      void registerNativeOperationalFcm().catch(() => undefined);
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [session, registerNativeOperationalFcm]);
+
   async function enableOperationalAlerts() {
     setPushState("enabling");
     setError("");
     try {
+      if (hasNativeAndroidBridge()) {
+        await registerNativeOperationalFcm();
+        return;
+      }
+
       if (!("serviceWorker" in navigator) || !("Notification" in window)) {
         fallbackKnownReportsRef.current = new Set(reports.map((report) => report.id));
         setPushState("fallback");
@@ -335,6 +424,10 @@ export default function OperationalPage() {
 
   async function logout() {
     await fetch("/api/operational/push", { method: "DELETE" }).catch(() => undefined);
+    if (hasNativeAndroidBridge()) {
+      await fetch("/api/operational/fcm", { method: "DELETE" }).catch(() => undefined);
+      nativeFcmTokenRef.current = "";
+    }
     await fetch("/api/operational/session", { method: "DELETE" });
     setSession(null);
     setReports([]);
@@ -473,7 +566,7 @@ export default function OperationalPage() {
 
         <section
           className={`mt-4 rounded-2xl border p-4 ${
-            pushState === "enabled"
+            pushState === "enabled" || pushState === "native"
               ? "border-emerald-700 bg-emerald-950/20"
               : pushState === "fallback"
               ? "border-cyan-700 bg-cyan-950/20"
@@ -483,7 +576,9 @@ export default function OperationalPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-black">
-                {pushState === "enabled"
+                {pushState === "native"
+                  ? "📲 Avisos nativos Android activados"
+                  : pushState === "enabled"
                   ? "🔔 Avisos operativos activados"
                   : pushState === "fallback"
                   ? "📡 Avisos internos activos"
@@ -491,7 +586,9 @@ export default function OperationalPage() {
               </p>
 
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                {pushState === "fallback"
+                {pushState === "native"
+                  ? "FCM nativo está asociado a esta sesión operativa. Podés recibir avisos aunque la aplicación esté cerrada, siempre que Android permita las notificaciones y el dispositivo tenga conectividad."
+                  : pushState === "fallback"
                   ? "Este navegador no admite Push del sistema. Mientras esta pantalla permanezca abierta, Alerta Otamendi revisará nuevas alertas automáticamente y mostrará alarma interna, sonido y vibración cuando el dispositivo lo permita."
                   : "Recibirás las alertas de tu servicio correspondientes a esta jurisdicción."}
               </p>
@@ -503,7 +600,7 @@ export default function OperationalPage() {
               )}
             </div>
 
-            {pushState !== "enabled" && pushState !== "fallback" && (
+            {pushState !== "enabled" && pushState !== "native" && pushState !== "fallback" && (
               <button
                 type="button"
                 onClick={() => void enableOperationalAlerts()}
