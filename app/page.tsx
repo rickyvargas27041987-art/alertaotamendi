@@ -1543,10 +1543,10 @@ export default function Home() {
                 setMessage("");
                 window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
               }}
-              className={`min-h-36 rounded-3xl border p-4 text-left transition ${
+              className={`min-h-36 rounded-3xl border p-4 text-left transition-all duration-150 active:translate-y-[2px] active:scale-[0.985] ${
                 selected === category.title
-                  ? "scale-[0.985] border-white/50 bg-slate-800 ring-2 ring-white/10"
-                  : "border-slate-800 bg-slate-900 hover:bg-slate-800"
+                  ? "border-white/50 bg-gradient-to-b from-slate-700 to-slate-850 ring-2 ring-white/10 shadow-[0_3px_0_rgba(15,23,42,0.9),0_8px_18px_rgba(0,0,0,0.28)]"
+                  : "border-slate-700/80 bg-gradient-to-b from-slate-850 to-slate-950 shadow-[0_4px_0_rgba(15,23,42,0.95),0_10px_22px_rgba(0,0,0,0.25)] hover:border-slate-600 hover:from-slate-800 hover:to-slate-900 active:shadow-[0_1px_0_rgba(15,23,42,0.95),0_4px_10px_rgba(0,0,0,0.2)]"
               }`}
             >
               <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl ${category.color} text-xl`}>{category.icon}</div>
@@ -1713,14 +1713,36 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_48px] gap-3">
-          <button onClick={() => (window.location.href = "/mapa")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">🗺️ Ver mapa</button>
-          <button onClick={() => (window.location.href = "/mis-reportes")} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-bold hover:bg-slate-800">📄 Mis reportes</button>
-          <button onClick={() => (window.location.href = "/operativo")} className="flex items-center justify-center rounded-2xl border border-cyan-800/60 bg-cyan-950/30 text-lg hover:bg-cyan-900/40" aria-label="Acceso operativo" title="Acceso operativo">🛡️</button>
+        <section className="mt-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_52px] gap-3">
+          <button
+            onClick={() => (window.location.href = "/mapa")}
+            className="rounded-2xl border border-sky-400/50 bg-gradient-to-b from-sky-500/25 to-sky-950/55 py-4 text-sm font-black text-sky-100 shadow-[0_4px_0_rgba(3,105,161,0.45),0_10px_20px_rgba(0,0,0,0.28)] transition-all duration-150 hover:border-sky-300/70 hover:from-sky-500/35 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(3,105,161,0.45),0_4px_10px_rgba(0,0,0,0.2)]"
+          >
+            🗺️ Ver mapa
+          </button>
+
+          <button
+            onClick={() => (window.location.href = "/mis-reportes")}
+            className="rounded-2xl border border-amber-400/50 bg-gradient-to-b from-amber-500/25 to-amber-950/45 py-4 text-sm font-black text-amber-100 shadow-[0_4px_0_rgba(180,83,9,0.42),0_10px_20px_rgba(0,0,0,0.28)] transition-all duration-150 hover:border-amber-300/70 hover:from-amber-500/35 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(180,83,9,0.42),0_4px_10px_rgba(0,0,0,0.2)]"
+          >
+            📄 Mis reportes
+          </button>
+
+          <button
+            onClick={() => (window.location.href = "/operativo")}
+            className="flex items-center justify-center rounded-2xl border border-cyan-400/45 bg-gradient-to-b from-cyan-500/20 to-cyan-950/55 text-xl shadow-[0_4px_0_rgba(14,116,144,0.4),0_8px_16px_rgba(0,0,0,0.24)] transition-all duration-150 hover:border-cyan-300/65 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(14,116,144,0.4),0_3px_8px_rgba(0,0,0,0.18)]"
+            aria-label="Acceso operativo"
+            title="Acceso operativo"
+          >
+            🛡️
+          </button>
         </section>
 
-        <div className="mt-4 text-center">
-          <a href="/instalar" className="inline-block rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-300">
+        <div className="mt-5">
+          <a
+            href="/instalar"
+            className="block w-full rounded-2xl border border-emerald-400/55 bg-gradient-to-b from-emerald-500/25 to-emerald-950/55 px-4 py-4 text-center text-sm font-black text-emerald-100 shadow-[0_4px_0_rgba(5,150,105,0.4),0_10px_22px_rgba(0,0,0,0.28)] transition-all duration-150 hover:border-emerald-300/75 hover:from-emerald-500/35 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(5,150,105,0.4),0_4px_10px_rgba(0,0,0,0.2)]"
+          >
             📲 Instalar para mi localidad
           </a>
         </div>
