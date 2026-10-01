@@ -1008,8 +1008,8 @@ export default function Home() {
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
-                <p className="font-bold text-white">💊👮 Servicios cercanos</p>
-                <p className="mt-1">Desde la pantalla principal podés buscar farmacias y comisarías cercanas utilizando la ubicación del teléfono.</p>
+                <p className="font-bold text-white">🏥✚👮 Servicios cercanos</p>
+                <p className="mt-1">Desde la pantalla principal podés buscar centros de salud, farmacias y comisarías cercanas usando la ubicación del teléfono. En Centros de salud podés encontrar hospitales, clínicas, CAPS y otros centros médicos próximos, llamar cuando haya un teléfono disponible y abrir la ruta para llegar.</p>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
@@ -1020,16 +1020,10 @@ export default function Home() {
               <div className="rounded-2xl bg-slate-900 p-3">
                 <p className="font-bold text-white">📲 Instalar para mi localidad</p>
                 <p className="mt-1">
-                  Esta opción permite dejar la app preparada para la localidad donde vivís o donde la vas a usar habitualmente. Así puede mostrarte información y avisos más relevantes de esa zona.
+                  Desde este botón podés elegir o indicar el nombre de tu localidad y dejar la app preparada para esa zona. Así vas a tener la aplicación identificada para el lugar donde vivís o donde la uses habitualmente.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/20 p-3">
-                <p className="font-bold text-emerald-200">🇦🇷 ¿Funciona sólo en Otamendi?</p>
-                <p className="mt-1 text-slate-300">
-                  No. Aunque se llama Alerta Otamendi, la aplicación está preparada para funcionar en cualquier localidad de Argentina. Usa la ubicación del teléfono para adaptarse a la zona donde se encuentra cada usuario.
-                </p>
-              </div>
 
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-100/90">
                 <p className="font-bold">⚠️ Tu seguridad es primero</p>
@@ -1521,7 +1515,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setInfoOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-lg font-black text-slate-100 shadow-lg transition active:scale-95"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-400/80 bg-sky-500/25 text-xl font-black text-sky-200 shadow-lg shadow-sky-950/40 transition active:scale-95"
                 aria-label="Información sobre Alerta Otamendi"
                 title="Cómo funciona Alerta Otamendi"
               >
