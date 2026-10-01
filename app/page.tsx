@@ -50,6 +50,7 @@ const categories = [
   { icon: "🔥", title: "Incendio", label: "Incendio", helper: "Fuego, humo o riesgo de propagación", color: "bg-purple-500" },
   { icon: "🆘", title: "Emergencia", label: "Emergencia", helper: "Situación urgente que requiere atención inmediata", color: "bg-emerald-500" },
   { icon: "🛡️", title: "Defensa Civil", label: "Defensa Civil", helper: "Postes o cables caídos, árboles, animales sueltos, anegamientos y otros riesgos en la vía pública", color: "bg-cyan-600" },
+  { icon: "🏥", title: "Centros de salud", label: "Centros de salud", helper: "Hospitales, clínicas, CAPS y centros médicos cerca de tu ubicación", color: "bg-rose-600", utility: true },
 ];
 
 const IMPORTANT_CATEGORIES = new Set([
@@ -90,6 +91,19 @@ type NearbyPoliceStation = {
   name: string;
   address: string | null;
   phone: string | null;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+};
+
+type NearbyHealthCenter = {
+  id: string;
+  name: string;
+  kind: string;
+  address: string | null;
+  phone: string | null;
+  openingHours: string | null;
+  emergency: boolean;
   latitude: number;
   longitude: number;
   distanceKm: number;
@@ -197,6 +211,11 @@ export default function Home() {
   const [policeError, setPoliceError] = useState("");
   const [nearbyPoliceStations, setNearbyPoliceStations] = useState<NearbyPoliceStation[]>([]);
   const [policeSearchRadiusKm, setPoliceSearchRadiusKm] = useState(5);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState("");
+  const [nearbyHealthCenters, setNearbyHealthCenters] = useState<NearbyHealthCenter[]>([]);
+  const [healthSearchRadiusKm, setHealthSearchRadiusKm] = useState(8);
   const [isRecording, setIsRecording] = useState(false);
   const [nearbyToast, setNearbyToast] = useState<NearbyToast>(null);
 
@@ -656,6 +675,44 @@ export default function Home() {
     }
   }
 
+  async function openNearbyHealthCenters() {
+    setHealthOpen(true);
+    setHealthLoading(true);
+    setHealthError("");
+    setNearbyHealthCenters([]);
+
+    try {
+      if (!navigator.geolocation) {
+        throw new Error("Este dispositivo no permite obtener la ubicación.");
+      }
+
+      const position = await getPosition();
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+
+      const response = await fetch(
+        `/api/health-centers?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "No se pudieron buscar centros de salud cercanos.");
+      }
+
+      setNearbyHealthCenters(Array.isArray(data.centers) ? data.centers : []);
+      setHealthSearchRadiusKm(Number(data.radiusKm) || 8);
+    } catch (error) {
+      setHealthError(
+        error instanceof Error
+          ? error.message
+          : "No se pudieron buscar centros de salud cercanos."
+      );
+    } finally {
+      setHealthLoading(false);
+    }
+  }
+
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -991,6 +1048,136 @@ export default function Home() {
         </div>
       )}
 
+      {healthOpen && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => setHealthOpen(false)}
+        >
+          <div
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-rose-300">
+                  Atención médica cerca tuyo
+                </p>
+                <h2 className="mt-1 text-2xl font-black">🏥 Centros de salud</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Hospitales, clínicas, CAPS y centros médicos registrados cerca de tu ubicación.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHealthOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-300"
+              >
+                ✕
+              </button>
+            </div>
+
+            {healthLoading && (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-center">
+                <div className="text-3xl">📍</div>
+                <p className="mt-2 font-bold">Buscando centros de salud cercanos…</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Esperá unos segundos mientras obtenemos tu ubicación.
+                </p>
+              </div>
+            )}
+
+            {!healthLoading && healthError && (
+              <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-950/30 p-4">
+                <p className="font-bold text-red-200">No pudimos completar la búsqueda</p>
+                <p className="mt-1 text-sm text-slate-300">{healthError}</p>
+                <button
+                  type="button"
+                  onClick={() => void openNearbyHealthCenters()}
+                  className="mt-3 rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
+
+            {!healthLoading && !healthError && nearbyHealthCenters.length === 0 && (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-center">
+                <p className="font-bold">No encontramos centros registrados cerca.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  La búsqueda se amplió hasta {healthSearchRadiusKm} km.
+                </p>
+              </div>
+            )}
+
+            {!healthLoading && nearbyHealthCenters.length > 0 && (
+              <div className="mt-5 space-y-3">
+                <p className="text-xs text-slate-500">
+                  Mostrando los más cercanos dentro de {healthSearchRadiusKm} km.
+                </p>
+
+                {nearbyHealthCenters.map((center) => (
+                  <div
+                    key={center.id}
+                    className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-xl">
+                        🏥
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-black text-white">{center.name}</p>
+                        <p className="mt-1 text-xs font-bold text-rose-300">
+                          {center.kind} · 📍 A {center.distanceKm.toFixed(1)} km aprox.
+                        </p>
+                        {center.address && (
+                          <p className="mt-1 text-xs leading-5 text-slate-400">{center.address}</p>
+                        )}
+                        {center.openingHours && (
+                          <p className="mt-1 text-xs text-slate-500">🕐 {center.openingHours}</p>
+                        )}
+                        {center.emergency && (
+                          <p className="mt-1 text-xs font-bold text-red-300">
+                            🚑 Guardia / emergencia registrada
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={`mt-3 grid gap-2 ${center.phone ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {center.phone && (
+                        <a
+                          href={`tel:${center.phone.replace(/[^+\d]/g, "")}`}
+                          className="rounded-xl bg-slate-800 px-3 py-2 text-center text-xs font-bold"
+                        >
+                          ☎️ Llamar
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            `https://www.google.com/maps/dir/?api=1&destination=${center.latitude},${center.longitude}`,
+                            "_blank",
+                            "noopener,noreferrer"
+                          )
+                        }
+                        className="rounded-xl bg-rose-600 px-3 py-2 text-center text-xs font-bold"
+                      >
+                        🧭 Cómo llegar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
+              ℹ️ Los datos provienen de mapas públicos y pueden no reflejar horarios o teléfonos actualizados.
+            </div>
+          </div>
+        </div>
+      )}
+
       {policeOpen && (
         <div
           className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
@@ -1130,7 +1317,7 @@ export default function Home() {
                 <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
                   Cerca de tu ubicación
                 </p>
-                <h2 className="mt-1 text-2xl font-black">💊 Farmacias cercanas</h2>
+                <h2 className="mt-1 text-2xl font-black"><span className="text-emerald-400">✚</span> Farmacias cercanas</h2>
                 <p className="mt-1 text-sm text-slate-400">
                   Se buscan automáticamente usando la ubicación de tu teléfono.
                 </p>
@@ -1216,8 +1403,8 @@ export default function Home() {
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-xl">
-                        💊
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-2xl font-black text-emerald-400">
+                        ✚
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-black text-white">{pharmacy.name}</p>
@@ -1302,16 +1489,16 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => void openNearbyPharmacies()}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-700/50 bg-emerald-950/40 text-sm shadow-lg transition active:scale-95"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-700/50 bg-emerald-950/40 text-xl font-black text-emerald-300 shadow-lg transition active:scale-95"
                 aria-label="Buscar farmacias cercanas"
                 title="Farmacias cercanas"
               >
-                💊
+                ✚
               </button>
               <button
                 type="button"
                 onClick={() => void openNearbyPoliceStations()}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-blue-700/50 bg-blue-950/40 text-sm shadow-lg transition active:scale-95"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-700/50 bg-blue-950/40 text-xl shadow-lg transition active:scale-95"
                 aria-label="Buscar comisarías cercanas"
                 title="Comisarías cercanas"
               >
@@ -1320,7 +1507,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setInfoOpen(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-black text-slate-200 shadow-lg transition active:scale-95"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-lg font-black text-slate-100 shadow-lg transition active:scale-95"
                 aria-label="Información sobre Alerta Otamendi"
                 title="Cómo funciona Alerta Otamendi"
               >
@@ -1339,6 +1526,10 @@ export default function Home() {
             <button
               key={category.title}
               onClick={() => {
+                if (category.title === "Centros de salud") {
+                  void openNearbyHealthCenters();
+                  return;
+                }
                 setSelected(category.title);
                 setCivilDefenseType("");
                 setMessage("");
