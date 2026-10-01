@@ -1017,6 +1017,20 @@ export default function Home() {
                 <p className="mt-1">Desde “Mis reportes” podés consultar el estado de los avisos enviados desde este dispositivo, sin acceder a información privada de otros vecinos.</p>
               </div>
 
+              <div className="rounded-2xl bg-slate-900 p-3">
+                <p className="font-bold text-white">📲 Instalar para mi localidad</p>
+                <p className="mt-1">
+                  Esta opción permite dejar la app preparada para la localidad donde vivís o donde la vas a usar habitualmente. Así puede mostrarte información y avisos más relevantes de esa zona.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/20 p-3">
+                <p className="font-bold text-emerald-200">🇦🇷 ¿Funciona sólo en Otamendi?</p>
+                <p className="mt-1 text-slate-300">
+                  No. Aunque se llama Alerta Otamendi, la aplicación está preparada para funcionar en cualquier localidad de Argentina. Usa la ubicación del teléfono para adaptarse a la zona donde se encuentra cada usuario.
+                </p>
+              </div>
+
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-100/90">
                 <p className="font-bold">⚠️ Tu seguridad es primero</p>
                 <p className="mt-1">No persigas, no intervengas y no te expongas para obtener imágenes. La foto, el video y el audio son siempre opcionales.</p>
