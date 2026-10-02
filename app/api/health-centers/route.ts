@@ -9,11 +9,37 @@ type OverpassElement = {
   tags?: Record<string, string>;
 };
 
+type HealthCenter = {
+  id: string;
+  name: string;
+  kind: string;
+  address: string | null;
+  phone: string | null;
+  openingHours: string | null;
+  emergency: boolean;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+};
+
+type CacheEntry = {
+  createdAt: number;
+  centers: HealthCenter[];
+  radiusKm: number;
+};
+
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ] as const;
+
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const cache = new Map<string, CacheEntry>();
+
+function cacheKey(lat: number, lon: number) {
+  return `${lat.toFixed(2)}:${lon.toFixed(2)}`;
+}
 
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -35,9 +61,7 @@ function address(tags: Record<string, string>) {
     tags["addr:town"] ||
     tags["addr:village"] ||
     tags["addr:suburb"];
-  return [[street, number].filter(Boolean).join(" "), city]
-    .filter(Boolean)
-    .join(", ") || null;
+  return [[street, number].filter(Boolean).join(" "), city].filter(Boolean).join(", ") || null;
 }
 
 function kind(tags: Record<string, string>) {
@@ -48,25 +72,25 @@ function kind(tags: Record<string, string>) {
   return "Centro de atención";
 }
 
-function query(lat: number, lon: number, radius: number) {
+function query(lat: number, lon: number) {
   return `
-[out:json][timeout:9];
+[out:json][timeout:7];
 (
-  nwr["amenity"="hospital"](around:${radius},${lat},${lon});
-  nwr["amenity"="clinic"](around:${radius},${lat},${lon});
-  nwr["amenity"="doctors"](around:${radius},${lat},${lon});
-  nwr["healthcare"="hospital"](around:${radius},${lat},${lon});
-  nwr["healthcare"="clinic"](around:${radius},${lat},${lon});
-  nwr["healthcare"="centre"](around:${radius},${lat},${lon});
-  nwr["healthcare"="doctor"](around:${radius},${lat},${lon});
+  nwr["amenity"="hospital"](around:20000,${lat},${lon});
+  nwr["amenity"="clinic"](around:20000,${lat},${lon});
+  nwr["amenity"="doctors"](around:20000,${lat},${lon});
+  nwr["healthcare"="hospital"](around:20000,${lat},${lon});
+  nwr["healthcare"="clinic"](around:20000,${lat},${lon});
+  nwr["healthcare"="centre"](around:20000,${lat},${lon});
+  nwr["healthcare"="doctor"](around:20000,${lat},${lon});
 );
 out center tags;
 `;
 }
 
-async function request(endpoint: string, q: string, timeoutMs: number) {
+async function request(endpoint: string, q: string) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), 5500);
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -78,39 +102,22 @@ async function request(endpoint: string, q: string, timeoutMs: number) {
       cache: "no-store",
       signal: controller.signal,
     });
-
     if (!response.ok) throw new Error(`Servidor respondió ${response.status}.`);
     const data = await response.json();
-    return Array.isArray(data.elements) ? data.elements as OverpassElement[] : [];
+    const elements = Array.isArray(data.elements) ? (data.elements as OverpassElement[]) : [];
+    if (elements.length === 0) throw new Error("El servidor no devolvió centros de salud.");
+    return elements;
   } finally {
     clearTimeout(timer);
   }
 }
 
 async function fetchElements(q: string) {
-  try {
-    return await request(ENDPOINTS[0], q, 5000);
-  } catch {
-    return await Promise.any(
-      ENDPOINTS.slice(1).map((endpoint) => request(endpoint, q, 7500))
-    );
-  }
+  return Promise.any(ENDPOINTS.map((endpoint) => request(endpoint, q)));
 }
 
-async function search(lat: number, lon: number, radiusMeters: number) {
-  const elements = await fetchElements(query(lat, lon, radiusMeters));
-  const unique = new Map<string, {
-    id: string;
-    name: string;
-    kind: string;
-    address: string | null;
-    phone: string | null;
-    openingHours: string | null;
-    emergency: boolean;
-    latitude: number;
-    longitude: number;
-    distanceKm: number;
-  }>();
+function normalizeCenters(elements: OverpassElement[], lat: number, lon: number) {
+  const unique = new Map<string, HealthCenter>();
 
   for (const element of elements) {
     const latitude = element.lat ?? element.center?.lat;
@@ -119,7 +126,6 @@ async function search(lat: number, lon: number, radiusMeters: number) {
 
     const tags = element.tags || {};
     const id = `${element.type}-${element.id}`;
-
     unique.set(id, {
       id,
       name: tags.name || tags.official_name || tags.operator || kind(tags),
@@ -135,8 +141,8 @@ async function search(lat: number, lon: number, radiusMeters: number) {
   }
 
   return [...unique.values()]
-    .sort((a, b) => a.distanceKm - b.distanceKm)
-    .slice(0, 15);
+    .filter((center) => center.distanceKm <= 20)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
 export async function GET(requestObject: Request) {
@@ -146,27 +152,37 @@ export async function GET(requestObject: Request) {
     const lon = Number(searchParams.get("lon"));
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      return NextResponse.json(
-        { success: false, message: "Ubicación inválida." },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Ubicación inválida." }, { status: 400 });
     }
 
-    let radiusKm = 8;
-    let centers = await search(lat, lon, 8000);
+    const key = cacheKey(lat, lon);
+    const cached = cache.get(key);
 
-    if (centers.length < 3) {
-      radiusKm = 20;
-      centers = await search(lat, lon, 20000);
+    if (cached && Date.now() - cached.createdAt < CACHE_TTL_MS) {
+      return NextResponse.json({
+        success: true,
+        radiusKm: cached.radiusKm,
+        centers: cached.centers,
+        source: "cache",
+      });
     }
 
-    return NextResponse.json({ success: true, radiusKm, centers });
+    const elements = await fetchElements(query(lat, lon));
+    const allCenters = normalizeCenters(elements, lat, lon);
+
+    const nearby = allCenters.filter((center) => center.distanceKm <= 8);
+    const radiusKm = nearby.length >= 3 ? 8 : 20;
+    const centers = allCenters.filter((center) => center.distanceKm <= radiusKm).slice(0, 15);
+
+    cache.set(key, { createdAt: Date.now(), centers, radiusKm });
+
+    return NextResponse.json({ success: true, radiusKm, centers, source: "live" });
   } catch (error) {
     console.error("Error buscando centros de salud:", error);
     return NextResponse.json(
       {
         success: false,
-        message: "El servicio de mapas no respondió. Podés reintentar o buscar en Google Maps.",
+        message: "El servicio de mapas está demorando más de lo normal. Podés reintentar en unos segundos.",
       },
       { status: 503 }
     );

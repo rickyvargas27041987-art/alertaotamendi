@@ -679,35 +679,123 @@ export default function Home() {
     setHealthOpen(true);
     setHealthLoading(true);
     setHealthError("");
-    setNearbyHealthCenters([]);
+
+    const CACHE_KEY = "alerta_health_centers_cache";
+    const CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+
+    function loadCachedCenters(lat: number, lon: number) {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+
+        const cached = JSON.parse(raw);
+        if (
+          !cached ||
+          !Array.isArray(cached.centers) ||
+          !Number.isFinite(cached.latitude) ||
+          !Number.isFinite(cached.longitude) ||
+          !Number.isFinite(cached.savedAt)
+        ) {
+          return null;
+        }
+
+        const age = Date.now() - cached.savedAt;
+        const distance = calcularDistanciaKm(
+          lat,
+          lon,
+          cached.latitude,
+          cached.longitude
+        );
+
+        if (age > CACHE_MAX_AGE_MS || distance > 5) return null;
+        return cached;
+      } catch {
+        return null;
+      }
+    }
 
     try {
       if (!navigator.geolocation) {
         throw new Error("Este dispositivo no permite obtener la ubicación.");
       }
 
-      const position = await getPosition();
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
+      let lat = latitude;
+      let lon = longitude;
 
-      const response = await fetch(
-        `/api/health-centers?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
-        { cache: "no-store" }
-      );
-      const data = await response.json();
+      if (lat === null || lon === null) {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 6000,
+            maximumAge: 5 * 60_000,
+          });
+        });
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "No se pudieron buscar centros de salud cercanos.");
+        lat = position.coords.latitude;
+        lon = position.coords.longitude;
+        setLatitude(lat);
+        setLongitude(lon);
       }
 
-      setNearbyHealthCenters(Array.isArray(data.centers) ? data.centers : []);
-      setHealthSearchRadiusKm(Number(data.radiusKm) || 8);
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 7500);
+
+      try {
+        const response = await fetch(
+          `/api/health-centers?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
+          { cache: "no-store", signal: controller.signal }
+        );
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.message || "No se pudieron buscar centros de salud cercanos."
+          );
+        }
+
+        const centers = Array.isArray(data.centers) ? data.centers : [];
+        const radiusKm = Number(data.radiusKm) || 8;
+
+        setNearbyHealthCenters(centers);
+        setHealthSearchRadiusKm(radiusKm);
+
+        localStorage.setItem(
+          CACHE_KEY,
+          JSON.stringify({
+            centers,
+            radiusKm,
+            latitude: lat,
+            longitude: lon,
+            savedAt: Date.now(),
+          })
+        );
+      } finally {
+        window.clearTimeout(timer);
+      }
     } catch (error) {
-      setHealthError(
-        error instanceof Error
-          ? error.message
-          : "No se pudieron buscar centros de salud cercanos."
-      );
+      const currentLat = latitude;
+      const currentLon = longitude;
+      const fallback =
+        currentLat !== null && currentLon !== null
+          ? loadCachedCenters(currentLat, currentLon)
+          : null;
+
+      if (fallback) {
+        setNearbyHealthCenters(fallback.centers);
+        setHealthSearchRadiusKm(Number(fallback.radiusKm) || 8);
+        setHealthError(
+          "⚠️ El servicio está lento. Te mostramos la última búsqueda disponible para esta zona."
+        );
+      } else {
+        setNearbyHealthCenters([]);
+        setHealthError(
+          error instanceof DOMException && error.name === "AbortError"
+            ? "La búsqueda tardó demasiado. Tocá Reintentar."
+            : error instanceof Error
+              ? error.message
+              : "No se pudieron buscar centros de salud cercanos."
+        );
+      }
     } finally {
       setHealthLoading(false);
     }
