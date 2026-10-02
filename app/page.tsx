@@ -738,7 +738,7 @@ export default function Home() {
       }
 
       const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), 7500);
+      const timer = window.setTimeout(() => controller.abort(), 15000);
 
       try {
         const response = await fetch(

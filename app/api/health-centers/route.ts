@@ -74,7 +74,7 @@ function kind(tags: Record<string, string>) {
 
 function query(lat: number, lon: number) {
   return `
-[out:json][timeout:7];
+[out:json][timeout:10];
 (
   nwr["amenity"="hospital"](around:20000,${lat},${lon});
   nwr["amenity"="clinic"](around:20000,${lat},${lon});
@@ -90,7 +90,7 @@ out center tags;
 
 async function request(endpoint: string, q: string) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5500);
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(endpoint, {
       method: "POST",
