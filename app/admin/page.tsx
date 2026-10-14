@@ -236,7 +236,7 @@ const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null);
 const [relatedSearch, setRelatedSearch] = useState<RelatedSearchResult | null>(null);
 const [aiError, setAiError] = useState<string | null>(null);
   const [openActionsId, setOpenActionsId] = useState<number | null>(null);
-  const [mapPeriod, setMapPeriod] = useState("24h");
+  const [mapPeriod, setMapPeriod] = useState("1h");
   const [alertaNueva, setAlertaNueva] = useState<Report | null>(null);
   const [alertasCriticasPendientes, setAlertasCriticasPendientes] = useState<number[]>([]);
   const [now, setNow] = useState(new Date());
@@ -728,8 +728,11 @@ const [aiError, setAiError] = useState<string | null>(null);
       if (!Number.isFinite(createdAt)) return false;
 
       const diffHours =
-        (current - createdAt) / (1000 * 60 * 60);
-
+        (current - createdAt) / (1000 * 60 * 60); 
+      
+      if (mapPeriod === "1h") return diffHours <= 1;
+      if (mapPeriod === "3h") return diffHours <= 3;
+      if (mapPeriod === "6h") return diffHours <= 6;
       if (mapPeriod === "12h") return diffHours <= 12;
       if (mapPeriod === "24h") return diffHours <= 24;
       if (mapPeriod === "mes") return diffHours <= 24 * 30;
@@ -1030,6 +1033,9 @@ const [aiError, setAiError] = useState<string | null>(null);
                 onChange={(e) => setMapPeriod(e.target.value)}
                 className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold outline-none"
               >
+                <option value="1h">Última 1 hora</option>
+                <option value="3h">Últimas 3 horas</option>
+                <option value="6h">Últimas 6 horas</option>
                 <option value="12h">Últimas 12 horas</option>
                 <option value="24h">Últimas 24 horas</option>
                 <option value="mes">Último mes</option>
