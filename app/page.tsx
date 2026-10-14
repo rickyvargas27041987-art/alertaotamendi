@@ -218,11 +218,10 @@ export default function Home() {
   const [healthSearchRadiusKm, setHealthSearchRadiusKm] = useState(8);
   const [isRecording, setIsRecording] = useState(false);
   const [nearbyToast, setNearbyToast] = useState<NearbyToast>(null);
-  const [mainView, setMainView] = useState<"inicio" | "alertas" | "servicios">("inicio");
+  const [mainView, setMainView] = useState<"inicio" | "alertas" | "formulario" | "servicios">("inicio");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const reportFormRef = useRef<HTMLDivElement | null>(null);
   const emergencyMenuRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const baselineReadyRef = useRef(false);
@@ -980,6 +979,7 @@ export default function Home() {
       setMessage(`✅ Alerta enviada. Número de reporte: #${data.report?.id ?? ""}`);
       setDescription("");
       setSelected("");
+      setMainView("alertas");
       setCivilDefenseType("");
       setPhoto(null);
       setVideo(null);
@@ -1814,9 +1814,9 @@ export default function Home() {
               >
                 ← Volver al inicio
               </button>
-              <h2 className="mt-4 text-3xl font-black leading-tight">Hacer una alerta</h2>
+              <h2 className="mt-4 text-3xl font-black leading-tight">NUEVO REPORTE</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">
-                Primero elegí qué está pasando. Después vas a poder describir la situación y confirmar tu ubicación.
+                Elegí qué está pasando. Al tocar una opción se abrirá el formulario del reporte en una pantalla separada.
               </p>
             </section>
 
@@ -1828,13 +1828,10 @@ export default function Home() {
                     setSelected(category.title);
                     setCivilDefenseType("");
                     setMessage("");
-                    window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+                    setMainView("formulario");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
-                  className={`relative min-h-36 overflow-hidden rounded-3xl border-2 p-4 text-left transition-all duration-150 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-10 before:rounded-full before:bg-gradient-to-b before:from-white/10 before:to-transparent before:blur-md active:translate-y-[2px] active:scale-[0.985] ${
-                    selected === category.title
-                      ? "border-red-400 bg-[#020305] ring-1 ring-red-400/40 shadow-[0_0_5px_rgba(255,35,55,0.95),0_0_14px_rgba(255,20,45,0.85),0_0_28px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.50)]"
-                      : "border-red-500 bg-[#020305] shadow-[0_0_4px_rgba(255,35,55,0.90),0_0_12px_rgba(255,20,45,0.78),0_0_24px_rgba(255,0,35,0.34),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_rgba(120,0,15,0.42)] hover:border-red-400 hover:shadow-[0_0_5px_rgba(255,45,65,0.98),0_0_15px_rgba(255,25,50,0.88),0_0_30px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.48)] active:shadow-[0_0_3px_rgba(255,35,55,0.85),0_0_9px_rgba(255,20,45,0.62),inset_0_1px_0_rgba(255,255,255,0.05)]"
-                  }`}
+                  className="relative min-h-36 overflow-hidden rounded-3xl border-2 border-red-500 bg-[#020305] p-4 text-left shadow-[0_0_4px_rgba(255,35,55,0.90),0_0_12px_rgba(255,20,45,0.78),0_0_24px_rgba(255,0,35,0.34),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_rgba(120,0,15,0.42)] transition-all duration-150 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-10 before:rounded-full before:bg-gradient-to-b before:from-white/10 before:to-transparent before:blur-md hover:border-red-400 active:translate-y-[2px] active:scale-[0.985]"
                 >
                   <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 ${category.color} text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_8px_rgba(0,0,0,0.28)]`}>
                     {category.icon}
@@ -1845,134 +1842,152 @@ export default function Home() {
               ))}
             </section>
 
-            {selected && (
-              <section ref={reportFormRef} className="mt-6 scroll-mt-20 rounded-3xl border border-slate-800 bg-slate-900 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Completar alerta</p>
-                    <h3 className="mt-1 text-xl font-black">{selectedCategory?.icon} {selected}</h3>
-                  </div>
-                  <button onClick={() => setSelected("")} className="text-sm text-slate-500">Cambiar</button>
-                </div>
-
-                {selected === "Defensa Civil" && (
-                  <div className="mt-5 rounded-2xl border border-cyan-700/40 bg-cyan-950/20 p-4">
-                    <label className="block text-sm font-bold text-cyan-100">
-                      🛡️ ¿Qué situación querés informar?
-                    </label>
-                    <select
-                      value={civilDefenseType}
-                      onChange={(event) => setCivilDefenseType(event.target.value)}
-                      className="mt-3 w-full rounded-xl border border-cyan-800/60 bg-slate-950 p-3 text-sm text-white outline-none focus:border-cyan-500"
-                    >
-                      <option value="">Elegí una opción</option>
-                      <option value="Poste o cable caído">Poste o cable caído</option>
-                      <option value="Árbol o rama caída">Árbol o rama caída</option>
-                      <option value="Animal suelto">Animal suelto</option>
-                      <option value="Anegamiento o inundación">Anegamiento o inundación</option>
-                      <option value="Riesgo estructural">Riesgo estructural</option>
-                      <option value="Obstáculo o peligro en la vía pública">Obstáculo o peligro en la vía pública</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                    <p className="mt-2 text-xs leading-5 text-cyan-100/60">
-                      El tipo seleccionado se enviará al Centro de Monitoreo y permitirá derivarlo a Defensa Civil.
-                    </p>
-                  </div>
-                )}
-
-                <label className="mt-5 block text-sm font-semibold">Contanos qué estás observando</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value.slice(0, 1000))}
-                  placeholder="Ej.: vehículo detenido hace varios minutos frente a una vivienda…"
-                  className="mt-2 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
-                />
-                <div className="mt-1 text-right text-[11px] text-slate-600">{description.length}/1000</div>
-
-                <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold">📍 Ubicación</p>
-                      <p className="mt-1 text-xs text-slate-500">Necesaria para ubicar correctamente la alerta.</p>
-                    </div>
-                    <button onClick={() => void getLocation()} className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold">Obtener</button>
-                  </div>
-                  {locationMessage && <p className="mt-2 text-xs font-semibold text-slate-300">{locationMessage}</p>}
-                </div>
-
-                <div className="mt-4">
-                  <p className="text-sm font-semibold">Evidencia opcional</p>
-                  <p className="mt-1 text-xs text-slate-500">Adjuntá solo si podés hacerlo sin exponerte ni acercarte a la situación.</p>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-                    📷 {photo ? "Foto ✓" : "Foto"}
-                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
-                  </label>
-                  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-                    🎥 {video ? "Video ✓" : "Video"}
-                    <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] || null)} />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isRecording) {
-                        stopRecording();
-                      } else {
-                        void startRecording();
-                      }
-                    }}
-                    className={`rounded-2xl py-3 text-sm font-semibold ${isRecording ? "bg-red-600" : "bg-slate-800"}`}
-                  >
-                    {isRecording
-                      ? "⏹️ Detener audio"
-                      : audio
-                        ? "🎤 Audio ✓"
-                        : "🎙️ Grabar audio"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmergencyMenuOpen((value) => !value);
-                      window.setTimeout(() => {
-                        emergencyMenuRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }, 100);
-                    }}
-                    className="rounded-2xl bg-red-600 py-3 text-sm font-semibold"
-                  >
-                    ☎️ Emergencias
-                  </button>
-                </div>
-
-                {emergencyMenuOpen && (
-                  <div
-                    ref={emergencyMenuRef}
-                    className="fixed inset-x-4 bottom-4 z-[9999] mx-auto max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl border border-red-500/30 bg-slate-950 p-4 shadow-2xl"
-                  >
-                    <p className="mb-3 text-center font-bold">Si hay peligro inmediato, llamá al servicio correspondiente</p>
-                    <div className="grid gap-2">
-                      <a href="tel:911" className="rounded-xl bg-red-600 p-3 text-center font-bold">🆘 Emergencias 911</a>
-                      <a href="tel:101" className="rounded-xl bg-blue-600 p-3 text-center font-bold">🚓 Policía 101</a>
-                      <a href="tel:107" className="rounded-xl bg-emerald-600 p-3 text-center font-bold">🚑 Emergencia médica 107</a>
-                      <a href="tel:100" className="rounded-xl bg-orange-600 p-3 text-center font-bold">🚒 Bomberos 100</a>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
-                  ⚠️ No intervengas, no persigas y no te expongas para obtener una foto o video. Ante peligro inmediato, llamá al 911.
-                </div>
-
-                <button
-                  onClick={() => void sendReport()}
-                  disabled={sending}
-                  className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-black transition hover:bg-red-600 disabled:opacity-50"
-                >
-                  {sending ? "ENVIANDO ALERTA…" : "🚨 ENVIAR ALERTA"}
-                </button>
-              </section>
+            {message && (
+              <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">{message}</div>
             )}
+          </>
+        )}
+
+        {mainView === "formulario" && selected && (
+          <>
+            <section className="pt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setMainView("alertas");
+                  setSelected("");
+                  setCivilDefenseType("");
+                  setMessage("");
+                  setEmergencyMenuOpen(false);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-300"
+              >
+                ← Volver a categorías
+              </button>
+
+              <div className="mt-4 rounded-3xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-red-300">NUEVO REPORTE</p>
+                <h2 className="mt-2 text-2xl font-black">{selectedCategory?.icon} {selected}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Completá los datos necesarios y enviá el reporte.
+                </p>
+              </div>
+            </section>
+
+            <section className="mt-4 rounded-3xl border border-slate-800 bg-slate-900 p-5">
+              {selected === "Defensa Civil" && (
+                <div className="rounded-2xl border border-cyan-700/40 bg-cyan-950/20 p-4">
+                  <label className="block text-sm font-bold text-cyan-100">
+                    🛡️ ¿Qué situación querés informar?
+                  </label>
+                  <select
+                    value={civilDefenseType}
+                    onChange={(event) => setCivilDefenseType(event.target.value)}
+                    className="mt-3 w-full rounded-xl border border-cyan-800/60 bg-slate-950 p-3 text-sm text-white outline-none focus:border-cyan-500"
+                  >
+                    <option value="">Elegí una opción</option>
+                    <option value="Poste o cable caído">Poste o cable caído</option>
+                    <option value="Árbol o rama caída">Árbol o rama caída</option>
+                    <option value="Animal suelto">Animal suelto</option>
+                    <option value="Anegamiento o inundación">Anegamiento o inundación</option>
+                    <option value="Riesgo estructural">Riesgo estructural</option>
+                    <option value="Obstáculo o peligro en la vía pública">Obstáculo o peligro en la vía pública</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                  <p className="mt-2 text-xs leading-5 text-cyan-100/60">
+                    El tipo seleccionado se enviará al Centro de Monitoreo y permitirá derivarlo a Defensa Civil.
+                  </p>
+                </div>
+              )}
+
+              <label className={`${selected === "Defensa Civil" ? "mt-5" : ""} block text-sm font-semibold`}>Contanos qué estás observando</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 1000))}
+                placeholder="Ej.: vehículo detenido hace varios minutos frente a una vivienda…"
+                className="mt-2 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
+              />
+              <div className="mt-1 text-right text-[11px] text-slate-600">{description.length}/1000</div>
+
+              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold">📍 Ubicación</p>
+                    <p className="mt-1 text-xs text-slate-500">Necesaria para ubicar correctamente la alerta.</p>
+                  </div>
+                  <button onClick={() => void getLocation()} className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold">Obtener</button>
+                </div>
+                {locationMessage && <p className="mt-2 text-xs font-semibold text-slate-300">{locationMessage}</p>}
+              </div>
+
+              <div className="mt-4">
+                <p className="text-sm font-semibold">Evidencia opcional</p>
+                <p className="mt-1 text-xs text-slate-500">Adjuntá solo si podés hacerlo sin exponerte ni acercarte a la situación.</p>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+                  📷 {photo ? "Foto ✓" : "Foto"}
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
+                </label>
+                <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+                  🎥 {video ? "Video ✓" : "Video"}
+                  <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] || null)} />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isRecording) stopRecording();
+                    else void startRecording();
+                  }}
+                  className={`rounded-2xl py-3 text-sm font-semibold ${isRecording ? "bg-red-600" : "bg-slate-800"}`}
+                >
+                  {isRecording ? "⏹️ Detener audio" : audio ? "🎤 Audio ✓" : "🎙️ Grabar audio"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmergencyMenuOpen((value) => !value)}
+                  className="rounded-2xl bg-red-600 py-3 text-sm font-semibold"
+                >
+                  ☎️ Emergencias
+                </button>
+              </div>
+
+              {emergencyMenuOpen && (
+                <div
+                  ref={emergencyMenuRef}
+                  className="fixed inset-x-4 bottom-4 z-[9999] mx-auto max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl border border-red-500/30 bg-slate-950 p-4 shadow-2xl"
+                >
+                  <p className="mb-3 text-center font-bold">Si hay peligro inmediato, llamá al servicio correspondiente</p>
+                  <div className="grid gap-2">
+                    <a href="tel:911" className="rounded-xl bg-red-600 p-3 text-center font-bold">🆘 Emergencias 911</a>
+                    <a href="tel:101" className="rounded-xl bg-blue-600 p-3 text-center font-bold">🚓 Policía 101</a>
+                    <a href="tel:107" className="rounded-xl bg-emerald-600 p-3 text-center font-bold">🚑 Emergencia médica 107</a>
+                    <a href="tel:100" className="rounded-xl bg-orange-600 p-3 text-center font-bold">🚒 Bomberos 100</a>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmergencyMenuOpen(false)}
+                    className="mt-3 w-full rounded-xl bg-slate-800 p-3 text-center text-sm font-bold"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
+                ⚠️ No intervengas, no persigas y no te expongas para obtener una foto o video. Ante peligro inmediato, llamá al 911.
+              </div>
+
+              <button
+                onClick={() => void sendReport()}
+                disabled={sending}
+                className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-black transition hover:bg-red-600 disabled:opacity-50"
+              >
+                {sending ? "ENVIANDO REPORTE…" : "🚨 ENVIAR REPORTE"}
+              </button>
+            </section>
 
             {message && (
               <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">{message}</div>
