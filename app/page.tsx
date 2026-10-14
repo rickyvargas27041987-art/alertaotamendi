@@ -218,6 +218,7 @@ export default function Home() {
   const [healthSearchRadiusKm, setHealthSearchRadiusKm] = useState(8);
   const [isRecording, setIsRecording] = useState(false);
   const [nearbyToast, setNearbyToast] = useState<NearbyToast>(null);
+  const [mainView, setMainView] = useState<"inicio" | "alertas" | "servicios">("inicio");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1554,13 +1555,26 @@ export default function Home() {
 
       <div className="mx-auto max-w-md px-4 pb-10 sm:px-5">
         <header className="sticky top-0 z-30 -mx-4 flex items-center justify-between border-b border-slate-900 bg-slate-950/90 px-4 py-4 backdrop-blur sm:-mx-5 sm:px-5">
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (mainView !== "inicio") {
+                setMainView("inicio");
+                setSelected("");
+                setCivilDefenseType("");
+                setMessage("");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
+            }}
+            className="flex items-center gap-2 text-left"
+            aria-label="Volver al inicio"
+          >
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500 text-2xl shadow-lg shadow-red-950/40">🚨</div>
             <div>
               <h1 className="text-xl font-black tracking-tight">ALERTA OTAMENDI</h1>
               <p className="text-xs text-slate-500">Comunidad conectada</p>
             </div>
-          </div>
+          </button>
 
           <button
             onClick={() => void toggleNotifications()}
@@ -1576,266 +1590,395 @@ export default function Home() {
           </button>
         </header>
 
-        <section className="pt-7">
-          <div className="flex items-center justify-between gap-3">
-            <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">
-              REPORTE CIUDADANO
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void openNearbyPharmacies()}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-700/50 bg-emerald-950/40 text-xl font-black text-emerald-300 shadow-lg transition active:scale-95"
-                aria-label="Buscar farmacias cercanas"
-                title="Farmacias cercanas"
-              >
-                ✚
-              </button>
-              <button
-                type="button"
-                onClick={() => void openNearbyPoliceStations()}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-700/50 bg-blue-950/40 text-xl shadow-lg transition active:scale-95"
-                aria-label="Buscar comisarías cercanas"
-                title="Comisarías cercanas"
-              >
-                👮
-              </button>
-              <button
-                type="button"
-                onClick={() => setInfoOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-400/80 bg-sky-500/25 text-xl font-black text-sky-200 shadow-lg shadow-sky-950/40 transition active:scale-95"
-                aria-label="Información sobre Alerta Otamendi"
-                title="Cómo funciona Alerta Otamendi"
-              >
-                ⓘ
-              </button>
-            </div>
-          </div>
-          <h2 className="mt-3 text-3xl font-black leading-tight">¿Qué está pasando?</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
-            Elegí una opción, contanos brevemente qué ves y enviá la alerta. El sistema registra tu ubicación automáticamente.
-          </p>
-        </section>
+        {mainView === "inicio" && (
+          <>
+            <section className="pt-7">
+              <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">
+                ACCESO RÁPIDO
+              </span>
+              <h2 className="mt-3 text-3xl font-black leading-tight">¿Qué necesitás hacer?</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Elegí una opción. Las funciones principales están separadas para que puedas encontrarlas rápido.
+              </p>
+            </section>
 
-        <section className="mt-6 grid grid-cols-2 gap-3">
-          {categories.map((category) => (
-            <button
-              key={category.title}
-              onClick={() => {
-                if (category.title === "Centros de salud") {
-                  void openNearbyHealthCenters();
-                  return;
-                }
-                setSelected(category.title);
-                setCivilDefenseType("");
-                setMessage("");
-                window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-              }}
-              className={`relative min-h-36 overflow-hidden rounded-3xl border-2 p-4 text-left transition-all duration-150 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-10 before:rounded-full before:bg-gradient-to-b before:from-white/10 before:to-transparent before:blur-md active:translate-y-[2px] active:scale-[0.985] ${
-                selected === category.title
-                  ? "border-red-400 bg-[#020305] ring-1 ring-red-400/40 shadow-[0_0_5px_rgba(255,35,55,0.95),0_0_14px_rgba(255,20,45,0.85),0_0_28px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.50)]"
-                  : "border-red-500 bg-[#020305] shadow-[0_0_4px_rgba(255,35,55,0.90),0_0_12px_rgba(255,20,45,0.78),0_0_24px_rgba(255,0,35,0.34),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_rgba(120,0,15,0.42)] hover:border-red-400 hover:shadow-[0_0_5px_rgba(255,45,65,0.98),0_0_15px_rgba(255,25,50,0.88),0_0_30px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.48)] active:shadow-[0_0_3px_rgba(255,35,55,0.85),0_0_9px_rgba(255,20,45,0.62),inset_0_1px_0_rgba(255,255,255,0.05)]"
-              }`}
-            >
-              <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 ${category.color} text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_8px_rgba(0,0,0,0.28)]`}>
-                {category.icon}
-              </div>
-              <p className="text-sm font-black text-white">{category.label ?? category.title}</p>
-              <p className="mt-1 text-[11px] leading-4 text-slate-400">{category.helper}</p>
-            </button>
-          ))}
-        </section>
-
-        {selected && (
-          <section ref={reportFormRef} className="mt-6 scroll-mt-20 rounded-3xl border border-slate-800 bg-slate-900 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Paso 2 de 3</p>
-                <h3 className="mt-1 text-xl font-black">{selectedCategory?.icon} {selected}</h3>
-              </div>
-              <button onClick={() => setSelected("")} className="text-sm text-slate-500">Cambiar</button>
-            </div>
-
-            {selected === "Defensa Civil" && (
-              <div className="mt-5 rounded-2xl border border-cyan-700/40 bg-cyan-950/20 p-4">
-                <label className="block text-sm font-bold text-cyan-100">
-                  🛡️ ¿Qué situación querés informar?
-                </label>
-                <select
-                  value={civilDefenseType}
-                  onChange={(event) => setCivilDefenseType(event.target.value)}
-                  className="mt-3 w-full rounded-xl border border-cyan-800/60 bg-slate-950 p-3 text-sm text-white outline-none focus:border-cyan-500"
-                >
-                  <option value="">Elegí una opción</option>
-                  <option value="Poste o cable caído">Poste o cable caído</option>
-                  <option value="Árbol o rama caída">Árbol o rama caída</option>
-                  <option value="Animal suelto">Animal suelto</option>
-                  <option value="Anegamiento o inundación">Anegamiento o inundación</option>
-                  <option value="Riesgo estructural">Riesgo estructural</option>
-                  <option value="Obstáculo o peligro en la vía pública">Obstáculo o peligro en la vía pública</option>
-                  <option value="Otro">Otro</option>
-                </select>
-                <p className="mt-2 text-xs leading-5 text-cyan-100/60">
-                  El tipo seleccionado se enviará al Centro de Monitoreo y permitirá derivarlo a Defensa Civil.
-                </p>
-              </div>
-            )}
-
-            <label className="mt-5 block text-sm font-semibold">Contanos qué estás observando</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value.slice(0, 1000))}
-              placeholder="Ej.: vehículo detenido hace varios minutos frente a una vivienda…"
-              className="mt-2 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
-            />
-            <div className="mt-1 text-right text-[11px] text-slate-600">{description.length}/1000</div>
-
-            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-bold">📍 Ubicación</p>
-                  <p className="mt-1 text-xs text-slate-500">Necesaria para ubicar correctamente la alerta.</p>
-                </div>
-                <button onClick={() => void getLocation()} className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold">Obtener</button>
-              </div>
-              {locationMessage && <p className="mt-2 text-xs font-semibold text-slate-300">{locationMessage}</p>}
-            </div>
-
-            <div className="mt-4">
-              <p className="text-sm font-semibold">Evidencia opcional</p>
-              <p className="mt-1 text-xs text-slate-500">Adjuntá solo si podés hacerlo sin exponerte ni acercarte a la situación.</p>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-                📷 {photo ? "Foto ✓" : "Foto"}
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
-              </label>
-              <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
-                🎥 {video ? "Video ✓" : "Video"}
-                <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] || null)} />
-              </label>
+            <section className="mt-6 space-y-3">
               <button
                 type="button"
                 onClick={() => {
-                  if (isRecording) {
-                    stopRecording();
-                  } else {
-                    void startRecording();
-                  }
+                  setSelected("");
+                  setCivilDefenseType("");
+                  setMessage("");
+                  setMainView("alertas");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
-                className={`rounded-2xl py-3 text-sm font-semibold ${isRecording ? "bg-red-600" : "bg-slate-800"}`}
+                className="relative w-full overflow-hidden rounded-3xl border-2 border-red-500 bg-[#020305] p-5 text-left shadow-[0_0_5px_rgba(255,35,55,0.95),0_0_15px_rgba(255,20,45,0.82),0_0_30px_rgba(255,0,35,0.38),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.48)] transition-all active:translate-y-[2px] active:scale-[0.99]"
               >
-                {isRecording
-                  ? "⏹️ Detener audio"
-                  : audio
-                    ? "🎤 Audio ✓"
-                    : "🎙️ Grabar audio"}
-              </button>
-            <button
-  onClick={() => {
-    setEmergencyMenuOpen((value) => !value);
-
-    window.setTimeout(() => {
-      emergencyMenuRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 100);
-  }}
-  className="rounded-2xl bg-red-600 py-3 text-sm font-semibold"
-> 
-                ☎️ Emergencias
-              </button>
-            </div>
-
-            {emergencyMenuOpen && (
-             <div
-  ref={emergencyMenuRef}
-  className="fixed inset-x-4 bottom-4 z-[9999] mx-auto max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl border border-red-500/30 bg-slate-950 p-4 shadow-2xl"
-> 
-                <p className="mb-3 text-center font-bold">Si hay peligro inmediato, llamá al servicio correspondiente</p>
-                <div className="grid gap-2">
-                  <a href="tel:911" className="rounded-xl bg-red-600 p-3 text-center font-bold">🆘 Emergencias 911</a>
-                  <a href="tel:101" className="rounded-xl bg-blue-600 p-3 text-center font-bold">🚓 Policía 101</a>
-                  <a href="tel:107" className="rounded-xl bg-emerald-600 p-3 text-center font-bold">🚑 Emergencia médica 107</a>
-                  <a href="tel:100" className="rounded-xl bg-orange-600 p-3 text-center font-bold">🚒 Bomberos 100</a>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-red-500 text-3xl shadow-lg shadow-red-950/50">🚨</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xl font-black text-white">Hacer una alerta</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Informá rápidamente una situación y enviá tu ubicación.</p>
+                  </div>
+                  <span className="text-2xl text-red-300">›</span>
                 </div>
-              </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => (window.location.href = "/mapa")}
+                className="w-full rounded-3xl border border-sky-400/50 bg-gradient-to-b from-sky-500/20 to-sky-950/50 p-5 text-left shadow-[0_4px_0_rgba(3,105,161,0.35),0_10px_20px_rgba(0,0,0,0.25)] transition-all active:translate-y-[2px]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-sky-500/20 text-3xl">🗺️</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-black text-sky-100">Ver mapa</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Consultá las alertas y situaciones recientes de la zona.</p>
+                  </div>
+                  <span className="text-2xl text-sky-300">›</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => (window.location.href = "/mis-reportes")}
+                className="w-full rounded-3xl border border-amber-400/50 bg-gradient-to-b from-amber-500/20 to-amber-950/40 p-5 text-left shadow-[0_4px_0_rgba(180,83,9,0.35),0_10px_20px_rgba(0,0,0,0.25)] transition-all active:translate-y-[2px]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-3xl">📋</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-black text-amber-100">Mis reportes</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Revisá el estado de las alertas enviadas desde este dispositivo.</p>
+                  </div>
+                  <span className="text-2xl text-amber-300">›</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMainView("servicios");
+                  setMessage("");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="w-full rounded-3xl border border-emerald-400/45 bg-gradient-to-b from-emerald-500/18 to-emerald-950/45 p-5 text-left shadow-[0_4px_0_rgba(5,150,105,0.32),0_10px_20px_rgba(0,0,0,0.25)] transition-all active:translate-y-[2px]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-3xl">🏥</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-black text-emerald-100">Servicios útiles</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Centros de salud, farmacias y comisarías cercanas.</p>
+                  </div>
+                  <span className="text-2xl text-emerald-300">›</span>
+                </div>
+              </button>
+            </section>
+
+            {message && (
+              <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">{message}</div>
             )}
 
-            <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
-              ⚠️ No intervengas, no persigas y no te expongas para obtener una foto o video. Ante peligro inmediato, llamá al 911.
-            </div>
+            <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">{notificationsEnabled ? "🔔" : "🔕"}</div>
+                <div className="flex-1">
+                  <h3 className="font-black">Alertas cercanas</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Recibí avisos importantes reportados dentro de un radio aproximado de 5 km.
+                  </p>
+                  <button
+                    onClick={() => void toggleNotifications()}
+                    disabled={notificationBusy}
+                    className={`mt-3 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50 ${notificationsEnabled ? "bg-slate-800" : "bg-yellow-500 text-slate-950"}`}
+                  >
+                    {notificationBusy ? "Procesando…" : notificationsEnabled ? "Desactivar avisos" : "Activar alertas cercanas"}
+                  </button>
+                </div>
+              </div>
+            </section>
 
-            <button
-              onClick={() => void sendReport()}
-              disabled={sending}
-              className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-black transition hover:bg-red-600 disabled:opacity-50"
-            >
-              {sending ? "ENVIANDO ALERTA…" : "🚨 ENVIAR ALERTA"}
-            </button>
-          </section>
-        )}
-
-        {message && (
-          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">{message}</div>
-        )}
-
-        <section className="mt-7 rounded-3xl border border-slate-800 bg-slate-900 p-4">
-          <div className="flex items-start gap-3">
-            <div className="text-2xl">{notificationsEnabled ? "🔔" : "🔕"}</div>
-            <div className="flex-1">
-              <h3 className="font-black">Alertas cercanas</h3>
-              <p className="mt-1 text-xs leading-5 text-slate-400">
-                {isAndroidApp
-                  ? "Avisos de situaciones reportadas dentro de 5 km. En Android, las alertas importantes pueden llegar mediante notificaciones nativas aunque no tengas la app abierta."
-                  : "Avisos de situaciones reportadas dentro de 5 km. Las alertas importantes pueden llegar aunque no tengas la app abierta. En iPhone/iPad, agregá la web a la pantalla de inicio para usar notificaciones push."}
-              </p>
+            <section className="mt-5 grid grid-cols-2 gap-3">
               <button
-                onClick={() => void toggleNotifications()}
-                disabled={notificationBusy}
-                className={`mt-3 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50 ${notificationsEnabled ? "bg-slate-800" : "bg-yellow-500 text-slate-950"}`}
+                type="button"
+                onClick={() => setInfoOpen(true)}
+                className="rounded-2xl border border-sky-400/40 bg-sky-950/35 px-4 py-3 text-sm font-bold text-sky-100 transition active:scale-[0.98]"
               >
-                {notificationBusy ? "Procesando…" : notificationsEnabled ? "Desactivar avisos" : "Activar alertas cercanas"}
+                ⓘ Cómo funciona
               </button>
+              <button
+                type="button"
+                onClick={() => (window.location.href = "/operativo")}
+                className="rounded-2xl border border-cyan-400/35 bg-cyan-950/35 px-4 py-3 text-sm font-bold text-cyan-100 transition active:scale-[0.98]"
+              >
+                🛡️ Acceso operativo
+              </button>
+            </section>
+
+            <div className="mt-4">
+              <a
+                href="/instalar"
+                className="block w-full rounded-2xl border border-emerald-400/35 bg-emerald-950/30 px-4 py-3 text-center text-sm font-bold text-emerald-100 transition active:scale-[0.99]"
+              >
+                📲 Instalar para mi localidad
+              </a>
             </div>
-          </div>
-        </section>
+          </>
+        )}
 
-        <section className="mt-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_52px] gap-3">
-          <button
-            onClick={() => (window.location.href = "/mapa")}
-            className="rounded-2xl border border-sky-400/50 bg-gradient-to-b from-sky-500/25 to-sky-950/55 py-4 text-sm font-black text-sky-100 shadow-[0_4px_0_rgba(3,105,161,0.45),0_10px_20px_rgba(0,0,0,0.28)] transition-all duration-150 hover:border-sky-300/70 hover:from-sky-500/35 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(3,105,161,0.45),0_4px_10px_rgba(0,0,0,0.2)]"
-          >
-            🗺️ Ver mapa
-          </button>
+        {mainView === "servicios" && (
+          <>
+            <section className="pt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setMainView("inicio");
+                  setMessage("");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-300"
+              >
+                ← Volver al inicio
+              </button>
+              <h2 className="mt-4 text-3xl font-black">Servicios útiles</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Elegí qué necesitás encontrar cerca de tu ubicación.
+              </p>
+            </section>
 
-          <button
-            onClick={() => (window.location.href = "/mis-reportes")}
-            className="rounded-2xl border border-amber-400/50 bg-gradient-to-b from-amber-500/25 to-amber-950/45 py-4 text-sm font-black text-amber-100 shadow-[0_4px_0_rgba(180,83,9,0.42),0_10px_20px_rgba(0,0,0,0.28)] transition-all duration-150 hover:border-amber-300/70 hover:from-amber-500/35 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(180,83,9,0.42),0_4px_10px_rgba(0,0,0,0.2)]"
-          >
-            📄 Mis reportes
-          </button>
+            <section className="mt-6 space-y-3">
+              <button
+                type="button"
+                onClick={() => void openNearbyHealthCenters()}
+                className="w-full rounded-3xl border border-rose-400/45 bg-rose-950/30 p-5 text-left transition active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-500/15 text-3xl">🏥</div>
+                  <div className="flex-1">
+                    <p className="text-lg font-black">Centros de salud</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Hospitales, clínicas, CAPS y centros médicos cercanos.</p>
+                  </div>
+                  <span className="text-2xl text-rose-300">›</span>
+                </div>
+              </button>
 
-          <button
-            onClick={() => (window.location.href = "/operativo")}
-            className="flex items-center justify-center rounded-2xl border border-cyan-400/45 bg-gradient-to-b from-cyan-500/20 to-cyan-950/55 text-xl shadow-[0_4px_0_rgba(14,116,144,0.4),0_8px_16px_rgba(0,0,0,0.24)] transition-all duration-150 hover:border-cyan-300/65 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(14,116,144,0.4),0_3px_8px_rgba(0,0,0,0.18)]"
-            aria-label="Acceso operativo"
-            title="Acceso operativo"
-          >
-            🛡️
-          </button>
-        </section>
+              <button
+                type="button"
+                onClick={() => void openNearbyPharmacies()}
+                className="w-full rounded-3xl border border-emerald-400/45 bg-emerald-950/30 p-5 text-left transition active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 text-3xl font-black text-emerald-300">✚</div>
+                  <div className="flex-1">
+                    <p className="text-lg font-black">Farmacias cercanas</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Buscá farmacias registradas próximas a tu ubicación.</p>
+                  </div>
+                  <span className="text-2xl text-emerald-300">›</span>
+                </div>
+              </button>
 
-        <div className="mt-5">
-          <a
-            href="/instalar"
-            className="block w-full rounded-2xl border border-emerald-400/55 bg-gradient-to-b from-emerald-500/25 to-emerald-950/55 px-4 py-4 text-center text-sm font-black text-emerald-100 shadow-[0_4px_0_rgba(5,150,105,0.4),0_10px_22px_rgba(0,0,0,0.28)] transition-all duration-150 hover:border-emerald-300/75 hover:from-emerald-500/35 active:translate-y-[3px] active:shadow-[0_1px_0_rgba(5,150,105,0.4),0_4px_10px_rgba(0,0,0,0.2)]"
-          >
-            📲 Instalar para mi localidad
-          </a>
-        </div>
+              <button
+                type="button"
+                onClick={() => void openNearbyPoliceStations()}
+                className="w-full rounded-3xl border border-blue-400/45 bg-blue-950/30 p-5 text-left transition active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/15 text-3xl">👮</div>
+                  <div className="flex-1">
+                    <p className="text-lg font-black">Comisarías cercanas</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">Encontrá dependencias policiales y cómo llegar.</p>
+                  </div>
+                  <span className="text-2xl text-blue-300">›</span>
+                </div>
+              </button>
+            </section>
+
+            <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-5 text-amber-100/80">
+              ☎️ Ante una emergencia inmediata o peligro actual, utilizá los servicios oficiales correspondientes.
+            </div>
+          </>
+        )}
+
+        {mainView === "alertas" && (
+          <>
+            <section className="pt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setMainView("inicio");
+                  setSelected("");
+                  setCivilDefenseType("");
+                  setMessage("");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-300"
+              >
+                ← Volver al inicio
+              </button>
+              <h2 className="mt-4 text-3xl font-black leading-tight">Hacer una alerta</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Primero elegí qué está pasando. Después vas a poder describir la situación y confirmar tu ubicación.
+              </p>
+            </section>
+
+            <section className="mt-6 grid grid-cols-2 gap-3">
+              {categories.filter((category) => !category.utility).map((category) => (
+                <button
+                  key={category.title}
+                  onClick={() => {
+                    setSelected(category.title);
+                    setCivilDefenseType("");
+                    setMessage("");
+                    window.setTimeout(() => reportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+                  }}
+                  className={`relative min-h-36 overflow-hidden rounded-3xl border-2 p-4 text-left transition-all duration-150 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-10 before:rounded-full before:bg-gradient-to-b before:from-white/10 before:to-transparent before:blur-md active:translate-y-[2px] active:scale-[0.985] ${
+                    selected === category.title
+                      ? "border-red-400 bg-[#020305] ring-1 ring-red-400/40 shadow-[0_0_5px_rgba(255,35,55,0.95),0_0_14px_rgba(255,20,45,0.85),0_0_28px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.50)]"
+                      : "border-red-500 bg-[#020305] shadow-[0_0_4px_rgba(255,35,55,0.90),0_0_12px_rgba(255,20,45,0.78),0_0_24px_rgba(255,0,35,0.34),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_rgba(120,0,15,0.42)] hover:border-red-400 hover:shadow-[0_0_5px_rgba(255,45,65,0.98),0_0_15px_rgba(255,25,50,0.88),0_0_30px_rgba(255,0,35,0.42),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-2px_0_rgba(120,0,15,0.48)] active:shadow-[0_0_3px_rgba(255,35,55,0.85),0_0_9px_rgba(255,20,45,0.62),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                  }`}
+                >
+                  <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 ${category.color} text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_3px_8px_rgba(0,0,0,0.28)]`}>
+                    {category.icon}
+                  </div>
+                  <p className="text-sm font-black text-white">{category.label ?? category.title}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-400">{category.helper}</p>
+                </button>
+              ))}
+            </section>
+
+            {selected && (
+              <section ref={reportFormRef} className="mt-6 scroll-mt-20 rounded-3xl border border-slate-800 bg-slate-900 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Completar alerta</p>
+                    <h3 className="mt-1 text-xl font-black">{selectedCategory?.icon} {selected}</h3>
+                  </div>
+                  <button onClick={() => setSelected("")} className="text-sm text-slate-500">Cambiar</button>
+                </div>
+
+                {selected === "Defensa Civil" && (
+                  <div className="mt-5 rounded-2xl border border-cyan-700/40 bg-cyan-950/20 p-4">
+                    <label className="block text-sm font-bold text-cyan-100">
+                      🛡️ ¿Qué situación querés informar?
+                    </label>
+                    <select
+                      value={civilDefenseType}
+                      onChange={(event) => setCivilDefenseType(event.target.value)}
+                      className="mt-3 w-full rounded-xl border border-cyan-800/60 bg-slate-950 p-3 text-sm text-white outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Elegí una opción</option>
+                      <option value="Poste o cable caído">Poste o cable caído</option>
+                      <option value="Árbol o rama caída">Árbol o rama caída</option>
+                      <option value="Animal suelto">Animal suelto</option>
+                      <option value="Anegamiento o inundación">Anegamiento o inundación</option>
+                      <option value="Riesgo estructural">Riesgo estructural</option>
+                      <option value="Obstáculo o peligro en la vía pública">Obstáculo o peligro en la vía pública</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                    <p className="mt-2 text-xs leading-5 text-cyan-100/60">
+                      El tipo seleccionado se enviará al Centro de Monitoreo y permitirá derivarlo a Defensa Civil.
+                    </p>
+                  </div>
+                )}
+
+                <label className="mt-5 block text-sm font-semibold">Contanos qué estás observando</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value.slice(0, 1000))}
+                  placeholder="Ej.: vehículo detenido hace varios minutos frente a una vivienda…"
+                  className="mt-2 h-32 w-full resize-none rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm outline-none placeholder:text-slate-600 focus:border-red-500"
+                />
+                <div className="mt-1 text-right text-[11px] text-slate-600">{description.length}/1000</div>
+
+                <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold">📍 Ubicación</p>
+                      <p className="mt-1 text-xs text-slate-500">Necesaria para ubicar correctamente la alerta.</p>
+                    </div>
+                    <button onClick={() => void getLocation()} className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold">Obtener</button>
+                  </div>
+                  {locationMessage && <p className="mt-2 text-xs font-semibold text-slate-300">{locationMessage}</p>}
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-sm font-semibold">Evidencia opcional</p>
+                  <p className="mt-1 text-xs text-slate-500">Adjuntá solo si podés hacerlo sin exponerte ni acercarte a la situación.</p>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+                    📷 {photo ? "Foto ✓" : "Foto"}
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
+                  </label>
+                  <label className="cursor-pointer rounded-2xl bg-slate-800 py-3 text-center text-sm font-semibold">
+                    🎥 {video ? "Video ✓" : "Video"}
+                    <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] || null)} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRecording) {
+                        stopRecording();
+                      } else {
+                        void startRecording();
+                      }
+                    }}
+                    className={`rounded-2xl py-3 text-sm font-semibold ${isRecording ? "bg-red-600" : "bg-slate-800"}`}
+                  >
+                    {isRecording
+                      ? "⏹️ Detener audio"
+                      : audio
+                        ? "🎤 Audio ✓"
+                        : "🎙️ Grabar audio"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmergencyMenuOpen((value) => !value);
+                      window.setTimeout(() => {
+                        emergencyMenuRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }, 100);
+                    }}
+                    className="rounded-2xl bg-red-600 py-3 text-sm font-semibold"
+                  >
+                    ☎️ Emergencias
+                  </button>
+                </div>
+
+                {emergencyMenuOpen && (
+                  <div
+                    ref={emergencyMenuRef}
+                    className="fixed inset-x-4 bottom-4 z-[9999] mx-auto max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-2xl border border-red-500/30 bg-slate-950 p-4 shadow-2xl"
+                  >
+                    <p className="mb-3 text-center font-bold">Si hay peligro inmediato, llamá al servicio correspondiente</p>
+                    <div className="grid gap-2">
+                      <a href="tel:911" className="rounded-xl bg-red-600 p-3 text-center font-bold">🆘 Emergencias 911</a>
+                      <a href="tel:101" className="rounded-xl bg-blue-600 p-3 text-center font-bold">🚓 Policía 101</a>
+                      <a href="tel:107" className="rounded-xl bg-emerald-600 p-3 text-center font-bold">🚑 Emergencia médica 107</a>
+                      <a href="tel:100" className="rounded-xl bg-orange-600 p-3 text-center font-bold">🚒 Bomberos 100</a>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">
+                  ⚠️ No intervengas, no persigas y no te expongas para obtener una foto o video. Ante peligro inmediato, llamá al 911.
+                </div>
+
+                <button
+                  onClick={() => void sendReport()}
+                  disabled={sending}
+                  className="mt-4 w-full rounded-2xl bg-red-500 py-4 font-black transition hover:bg-red-600 disabled:opacity-50"
+                >
+                  {sending ? "ENVIANDO ALERTA…" : "🚨 ENVIAR ALERTA"}
+                </button>
+              </section>
+            )}
+
+            {message && (
+              <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-center text-sm font-semibold">{message}</div>
+            )}
+          </>
+        )}
 
         <footer className="py-8 text-center text-xs text-slate-600">
           <p>ALERTA OTAMENDI · Comunidad conectada</p>
