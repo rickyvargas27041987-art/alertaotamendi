@@ -1617,7 +1617,7 @@ export default function Home() {
                 <div className="flex items-center gap-4">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-red-500 text-3xl shadow-lg shadow-red-950/50">🚨</div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xl font-black text-white">Hacer una alerta</p>
+                    <p className="text-xl font-black text-white">NUEVO REPORTE</p>
                     <p className="mt-1 text-xs leading-5 text-slate-400">Informá rápidamente una situación y enviá tu ubicación.</p>
                   </div>
                   <span className="text-2xl text-red-300">›</span>
