@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Alerta Otamendi",
-  description: "Sistema comunitario de alertas de Comandante Nicanor Otamendi",
+  title: "Alerta Otamendi | Alertas y monitoreo inteligente para toda Argentina",
+  description: "Plataforma nacional de alertas comunitarias con software de monitoreo para municipios, policía, bomberos y Defensa Civil, con estadísticas, análisis y alertas asistidas por IA.",
   applicationName: "Alerta Otamendi",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
