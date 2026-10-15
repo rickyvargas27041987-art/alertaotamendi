@@ -1042,7 +1042,7 @@ export default function Home() {
                 </p>
                 <h2 className="mt-1 text-2xl font-black">🚨 Alerta Otamendi</h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Una herramienta comunitaria de prevención, información y ayuda para cuidarnos entre todos.
+                  Plataforma de prevención, información y alertas comunitarias disponible para cualquier localidad de Argentina.
                 </p>
               </div>
               <button
@@ -1058,7 +1058,7 @@ export default function Home() {
             <div className="mt-5 space-y-3 text-sm leading-5 text-slate-300">
               <div className="rounded-2xl border border-red-500/20 bg-red-950/20 p-3">
                 <p className="font-bold text-white">🤝 ¿Qué es Alerta Otamendi?</p>
-                <p className="mt-1">Es una aplicación móvil gratuita que permite informar una situación, conocer lo que sucede cerca y recibir avisos importantes en pocos segundos.</p>
+                <p className="mt-1">Es una plataforma de prevención y alertas comunitarias que puede utilizarse en cualquier localidad de Argentina. Permite informar situaciones, consultar lo que ocurre cerca, recibir avisos importantes y acceder a servicios útiles según la ubicación del usuario.</p>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-3">
@@ -1113,6 +1113,16 @@ export default function Home() {
                 </p>
               </div>
 
+              <div className="rounded-2xl border border-sky-500/25 bg-sky-950/20 p-3">
+                <p className="font-bold text-sky-200">🖥️ Centro de Monitoreo y gestión operativa</p>
+                <p className="mt-1 text-slate-300">Alerta Otamendi puede complementarse con un Centro de Monitoreo para municipios y organismos como Policía, Bomberos, Defensa Civil y áreas de emergencia. El sistema permite visualizar reportes en un mapa operativo, gestionar estados y prioridades, trabajar por jurisdicción y consultar estadísticas para apoyar la toma de decisiones.</p>
+              </div>
+
+              <div className="rounded-2xl border border-violet-500/25 bg-violet-950/20 p-3">
+                <p className="font-bold text-violet-200">🧠 Análisis y asistencia mediante IA</p>
+                <p className="mt-1 text-slate-300">El software puede utilizar herramientas de inteligencia artificial para organizar información, detectar posibles coincidencias entre reportes, asistir el seguimiento de vehículos o personas cargadas para búsqueda y destacar situaciones que requieren mayor atención. La IA funciona como apoyo al operador y no reemplaza la evaluación humana.</p>
+              </div>
+
 
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-100/90">
                 <p className="font-bold">⚠️ Tu seguridad es primero</p>
@@ -1125,8 +1135,8 @@ export default function Home() {
               </div>
 
               <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/25 p-3">
-                <p className="font-bold text-emerald-200">🇦🇷 Disponible en todo el país</p>
-                <p className="mt-1 text-slate-300">Alerta Otamendi utiliza la ubicación del teléfono para mostrar y enviar información relevante de la zona donde se encuentra cada usuario. Cuantas más personas la tengan instalada y mantengan activadas las notificaciones, mayor será su capacidad para prevenir, informar y ayudar a la comunidad.</p>
+                <p className="font-bold text-emerald-200">🇦🇷 Disponible para cualquier localidad de Argentina</p>
+                <p className="mt-1 text-slate-300">El nombre Alerta Otamendi identifica a la plataforma, pero su funcionamiento no está limitado a Comandante Nicanor Otamendi. La aplicación utiliza la ubicación del teléfono para adaptar reportes, mapa, servicios y avisos a la zona donde se encuentra cada usuario, por lo que puede utilizarse en localidades de todo el país.</p>
               </div>
             </div>
 
