@@ -1126,7 +1126,93 @@ async function fetchText(
       ),
   });
 }
+/* =========================================================
+   ELIMINAR DUPLICADOS DEL FEED
 
+   El SMN puede publicar más de una entrada que termina
+   representando el mismo identifier CAP.
+
+   Elegimos una sola versión por externalId de manera
+   determinística para evitar falsas "actualizaciones"
+   en cada sincronización.
+========================================================= */
+
+function deduplicateAlerts(
+  rawAlerts: AnyObject[]
+) {
+  const unique =
+    new Map<
+      string,
+      ParsedCapAlert
+    >();
+
+  for (const rawAlert of rawAlerts) {
+    const candidate =
+      parseCapAlert(rawAlert);
+
+    const existing =
+      unique.get(
+        candidate.externalId
+      );
+
+    if (!existing) {
+      unique.set(
+        candidate.externalId,
+        candidate
+      );
+
+      continue;
+    }
+
+    /*
+     * Si ambas entradas tienen el mismo identificador,
+     * preferimos primero la que tenga la fecha CAP más
+     * reciente.
+     */
+    const candidateTime =
+      candidate.sentAt?.getTime() ??
+      candidate.effectiveAt?.getTime() ??
+      0;
+
+    const existingTime =
+      existing.sentAt?.getTime() ??
+      existing.effectiveAt?.getTime() ??
+      0;
+
+    if (
+      candidateTime >
+      existingTime
+    ) {
+      unique.set(
+        candidate.externalId,
+        candidate
+      );
+
+      continue;
+    }
+
+    /*
+     * Si las fechas también coinciden usamos fingerprint
+     * como desempate estable. Así siempre se selecciona
+     * exactamente la misma variante en ejecuciones futuras.
+     */
+    if (
+      candidateTime ===
+        existingTime &&
+      candidate.fingerprint >
+        existing.fingerprint
+    ) {
+      unique.set(
+        candidate.externalId,
+        candidate
+      );
+    }
+  }
+
+  return Array.from(
+    unique.values()
+  );
+}
 /* =========================================================
    SINCRONIZACIÓN PRINCIPAL
 ========================================================= */
@@ -1327,12 +1413,14 @@ export async function syncWeatherAlerts() {
     let notificationsFailed =
       0;
 
-    for (const rawAlert of alerts) {
-      const parsed =
-        parseCapAlert(
-          rawAlert
-        );
+   const uniqueAlerts =
+      deduplicateAlerts(alerts);
 
+    console.log(
+      `[WEATHER] ${alerts.length} mensajes recibidos · ${uniqueAlerts.length} alertas únicas.`
+    );
+
+    for (const parsed of uniqueAlerts) {
       itemsProcessed++;
 
       const existing =
