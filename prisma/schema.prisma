@@ -489,6 +489,176 @@ model FcmDevice {
   @@index([createdAt])
 }
 
+// =========================================================
+// ALERTAS METEOROLÓGICAS OFICIALES
+// =========================================================
+//
+// Guarda cada mensaje meteorológico recibido desde una fuente oficial
+// (por ejemplo SMN/CAP), incluyendo su vigencia, severidad, áreas
+// afectadas y huella de contenido para detectar cambios reales.
+//
+model WeatherAlert {
+  id         Int    @id @default(autoincrement())
+  source     String @default("SMN")
+  externalId String @unique
+
+  // Tipo de producto: ALERTA, ADVERTENCIA, ACP, etc.
+  kind String
+
+  // Metadatos del mensaje oficial / CAP
+  sender        String?
+  messageStatus String?
+  messageType   String?
+  scope         String?
+  references    String[] @default([])
+  incidents     String[] @default([])
+
+  // Información meteorológica principal
+  category    String?
+  event       String
+  urgency     String?
+  severity    String?
+  certainty   String?
+  headline    String?
+  description String?
+  instruction String?
+  sourceWeb   String?
+
+  // Vigencia oficial
+  sentAt      DateTime?
+  effectiveAt DateTime?
+  onsetAt     DateTime?
+  expiresAt   DateTime?
+
+  // Cobertura geográfica.
+  // "areas" puede contener uno o varios polígonos/círculos/geocódigos
+  // tal como llegan desde la fuente oficial.
+  areaDescription String?
+  areas           Json?
+
+  // Nombres administrativos derivados para facilitar diagnóstico,
+  // visualización y filtros complementarios.
+  provinces  String[] @default([])
+  districts  String[] @default([])
+  localities String[] @default([])
+
+  // Huella del contenido normalizado. Si el mismo externalId cambia,
+  // una huella nueva permite tratarlo como actualización.
+  fingerprint String
+
+  // Estado interno. Una alerta cancelada o vencida deja de generar envíos.
+  active Boolean @default(true)
+
+  // Copia del mensaje original para auditoría y futuras mejoras del parser.
+  rawPayload Json?
+
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @updatedAt
+  lastNotifiedAt DateTime?
+
+  deliveries WeatherNotificationDelivery[]
+
+  @@index([source, kind])
+  @@index([active, expiresAt])
+  @@index([severity, active])
+  @@index([sentAt])
+  @@index([fingerprint])
+}
+
+// Registro por dispositivo/canal.
+//
+// La clave única evita notificar dos veces el mismo contenido al mismo
+// destino. Si una alerta oficial se actualiza y cambia su fingerprint,
+// puede enviarse una nueva notificación de actualización.
+model WeatherNotificationDelivery {
+  id             Int          @id @default(autoincrement())
+  weatherAlertId Int
+  weatherAlert   WeatherAlert @relation(fields: [weatherAlertId], references: [id], onDelete: Cascade)
+
+  // WEB_PUSH o FCM
+  channel String
+
+  // ID numérico de PushSubscription o FcmDevice.
+  // Se interpreta junto con "channel".
+  targetId Int
+
+  fingerprint String
+
+  // pending, sent, failed, expired
+  status   String @default("pending")
+  attempts Int    @default(0)
+
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  lastError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([weatherAlertId, channel, targetId, fingerprint])
+  @@index([status, lastAttemptAt])
+  @@index([weatherAlertId, status])
+  @@index([channel, targetId])
+}
+
+// Historial de cada consulta a las fuentes meteorológicas.
+// Sirve para saber si el SMN respondió, cuánto tiempo hace que no hay
+// una sincronización correcta y cuántos registros fueron procesados.
+model WeatherSyncRun {
+  id Int @id @default(autoincrement())
+
+  source String @default("SMN")
+  feed   String
+
+  status     String @default("running")
+  httpStatus Int?
+
+  itemsReceived  Int @default(0)
+  itemsProcessed Int @default(0)
+  itemsCreated   Int @default(0)
+  itemsUpdated   Int @default(0)
+
+  notificationsTargeted Int @default(0)
+  notificationsSent     Int @default(0)
+  notificationsFailed   Int @default(0)
+
+  error String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([source, feed, startedAt])
+  @@index([status, startedAt])
+}
+
+// Estado persistente de cada feed oficial.
+// Permite usar ETag/Last-Modified, registrar fallas consecutivas y
+// distinguir "no hay alertas" de "la fuente no respondió".
+model WeatherSourceState {
+  id Int @id @default(autoincrement())
+
+  sourceKey String @unique
+  source    String @default("SMN")
+  feed      String
+  endpoint  String
+
+  etag         String?
+  lastModified String?
+
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+
+  consecutiveFailures Int @default(0)
+  lastHttpStatus      Int?
+  lastError           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([source, feed])
+  @@index([lastSuccessAt])
+}
+
 // Límites compartidos entre instancias de Vercel. La clave se guarda como hash,
 // nunca como dirección IP en texto plano.
 model RequestRateLimit {
