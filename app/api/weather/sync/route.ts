@@ -10,6 +10,18 @@ export const maxDuration = 60;
 ========================================================= */
 
 async function isAuthorized(request: Request) {
+     const authorization =
+    request.headers.get("authorization");
+
+  const cronSecret =
+    process.env.CRON_SECRET?.trim();
+
+  if (
+    cronSecret &&
+    authorization === `Bearer ${cronSecret}`
+  ) {
+    return true;
+  }
   /*
    * Permite llamadas internas del propio sistema.
    */
