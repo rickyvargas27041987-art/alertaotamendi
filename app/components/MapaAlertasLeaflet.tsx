@@ -34,6 +34,10 @@ import {
   type LocalidadArgentina,
 } from "../data/localidadesArgentina";
 
+import {
+  weatherAlertAffectsZones,
+} from "@/lib/weatherJurisdiction";
+
 /* =========================================================
    TIPOS
 ========================================================= */
@@ -1678,9 +1682,18 @@ export default function MapaAlertasLeaflet({
               })
             ) as WeatherMapAlert[];
 
+          const jurisdictionAlerts =
+            normalizedAlerts.filter(
+              (alert) =>
+                weatherAlertAffectsZones(
+                  alert,
+                  monitorZones
+                )
+            );
+
           if (!cancelled) {
             setWeatherMapAlerts(
-              normalizedAlerts
+              jurisdictionAlerts
             );
           }
         } catch (error) {
@@ -1791,7 +1804,7 @@ export default function MapaAlertasLeaflet({
         dataInterval
       );
     };
-  }, [mode]);
+  }, [mode, monitorZones]);
 
   /* =======================================================
      RECORDAR ÚLTIMA PROVINCIA / LOCALIDAD - SOLO ADMIN
