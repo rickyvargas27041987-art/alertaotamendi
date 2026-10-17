@@ -16,13 +16,23 @@ type OperationalReport = {
   locality: string | null;
 };
 
-const SERVICE_ROUTING: Record<string, ServiceType[]> = {
-  // El Centro Municipal recibe todos los incidentes de su jurisdicción para coordinar.
-  "Delito / Robo": ["POLICE", "MUNICIPAL"],
-  "Persona sospechosa": ["POLICE", "MUNICIPAL"],
-  "Vehículo sospechoso": ["POLICE", "MUNICIPAL"],
+const SERVICE_ROUTING: Record<
+  string,
+  ServiceType[]
+> = {
+  "Delito / Robo": [
+    "POLICE",
+    "MUNICIPAL",
+  ],
+  "Persona sospechosa": [
+    "POLICE",
+    "MUNICIPAL",
+  ],
+  "Vehículo sospechoso": [
+    "POLICE",
+    "MUNICIPAL",
+  ],
 
-  // Un accidente puede requerir seguridad de escena, rescate y asistencia médica.
   Accidente: [
     "POLICE",
     "FIRE",
@@ -31,7 +41,6 @@ const SERVICE_ROUTING: Record<string, ServiceType[]> = {
     "MUNICIPAL",
   ],
 
-  // Incendios relevantes se comparten con Bomberos y coordinación territorial.
   Incendio: [
     "FIRE",
     "CIVIL_DEFENSE",
@@ -58,7 +67,9 @@ function normalize(
 ) {
   return (value ?? "")
     .trim()
-    .toLocaleLowerCase("es-AR");
+    .toLocaleLowerCase(
+      "es-AR"
+    );
 }
 
 function zoneMatches(
@@ -67,14 +78,26 @@ function zoneMatches(
 ) {
   return zones.some(
     (zone) =>
-      normalize(zone.province) ===
-        normalize(report.province) &&
-      normalize(zone.district) ===
-        normalize(report.district) &&
+      normalize(
+        zone.province
+      ) ===
+        normalize(
+          report.province
+        ) &&
+      normalize(
+        zone.district
+      ) ===
+        normalize(
+          report.district
+        ) &&
       (
         !zone.locality ||
-        normalize(zone.locality) ===
-          normalize(report.locality)
+        normalize(
+          zone.locality
+        ) ===
+          normalize(
+            report.locality
+          )
       )
   );
 }
@@ -116,97 +139,111 @@ async function notifyServices(
 
   try {
     const subscriptions =
-      await prisma.operationalPushSubscription.findMany(
-        {
-          where: {
-            enabled: true,
-            session: {
-              serviceType: {
-                in: services,
-              },
-              revokedAt: null,
-              expiresAt: {
-                gt: new Date(),
-              },
+      await prisma.operationalPushSubscription.findMany({
+        where: {
+          enabled: true,
+          session: {
+            serviceType: {
+              in: services,
+            },
+            revokedAt:
+              null,
+            expiresAt: {
+              gt: new Date(),
             },
           },
+        },
 
-          include: {
-            session: {
-              include: {
-                config: {
-                  include: {
-                    ownerUser: {
-                      include: {
-                        zones: true,
-                      },
+        include: {
+          session: {
+            include: {
+              config: {
+                include: {
+                  ownerUser: {
+                    include: {
+                      zones: true,
+                    },
+                  },
+                  organization: {
+                    include: {
+                      zones: true,
                     },
                   },
                 },
               },
             },
           },
-        }
-      );
+        },
+      });
 
     const recipients =
       subscriptions.filter(
         (item) =>
-          item.session.revision ===
-            item.session.config
+          item.session
+            .revision ===
+            item.session
+              .config
               .revision &&
           zoneMatches(
             report,
             configZones(
-              item.session.config
+              item.session
+                .config
             )
           )
       );
 
     const fcmDevices =
-      await prisma.operationalFcmDevice.findMany(
-        {
-          where: {
-            enabled: true,
-            session: {
-              serviceType: {
-                in: services,
-              },
-              revokedAt: null,
-              expiresAt: {
-                gt: new Date(),
-              },
+      await prisma.operationalFcmDevice.findMany({
+        where: {
+          enabled: true,
+          session: {
+            serviceType: {
+              in: services,
+            },
+            revokedAt:
+              null,
+            expiresAt: {
+              gt: new Date(),
             },
           },
+        },
 
-          include: {
-            session: {
-              include: {
-                config: {
-                  include: {
-                    ownerUser: {
-                      include: {
-                        zones: true,
-                      },
+        include: {
+          session: {
+            include: {
+              config: {
+                include: {
+                  ownerUser: {
+                    include: {
+                      zones: true,
+                    },
+                  },
+                  organization: {
+                    include: {
+                      zones: true,
                     },
                   },
                 },
               },
             },
           },
-        }
-      );
+        },
+      });
 
     const fcmRecipients =
       fcmDevices.filter(
         (item) =>
-          item.session.revision ===
-            item.session.config
+          item.session
+            .revision ===
+            item.session
+              .config
               .revision &&
           zoneMatches(
             report,
             configZones(
-              item.session.config
+              item.session
+                .config
             )
           )
       );
@@ -297,12 +334,6 @@ async function notifyServices(
                   "critical",
                 channel:
                   "operational",
-
-                /*
-                 * El personal operativo debe recibir
-                 * los avisos críticos aun cuando la
-                 * app esté en segundo plano o cerrada.
-                 */
                 showWhenBackground:
                   true,
               }
@@ -328,7 +359,6 @@ async function notifyServices(
       )
     );
   } catch (error) {
-    // Un fallo de notificación nunca debe impedir que el reporte se guarde.
     console.error(
       "No se pudieron enviar avisos al personal operativo:",
       error
