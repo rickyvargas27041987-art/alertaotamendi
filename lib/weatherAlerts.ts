@@ -906,20 +906,21 @@ async function notifyAlert(
       );
 
     try {
-      const result =
-        await sendFcmNotification(
-          target.token,
-          {
-            title,
-            body,
-            url: "/",
-            tag:
-              `weather-${weatherAlertId}`,
-            priority,
-            channel:
-              "public",
-          }
-        );
+     const result =
+  await sendFcmNotification(
+    target.token,
+    {
+      title,
+      body,
+      url: "/",
+      tag:
+        `weather-${weatherAlertId}`,
+      priority,
+      channel:
+        "public",
+      showWhenBackground: true,
+    }
+  );
 
       if (result.ok) {
         sent++;
