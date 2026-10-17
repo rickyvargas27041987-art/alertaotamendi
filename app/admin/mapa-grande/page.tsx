@@ -15,7 +15,71 @@ type Report = {
 type Zone = { province: string; district: string; locality: string | null };
 type FocusTarget = { latitude: number; longitude: number; radiusMeters?: number; key: number };
 type AlertCard = { report: Report; priority: Priority; address: string; area: string; manual?: boolean };
+type WeatherProjectionAlert = {
+  id: number;
+  event: string;
+  severity: string | null;
+  headline: string | null;
+  description: string | null;
+  instruction: string | null;
+  areaDescription: string | null;
+  onsetAt: string | null;
+  expiresAt: string | null;
+};
+function weatherSeverityInfo(value: string | null) {
+  const severity = value?.toLowerCase() || "";
 
+  if (severity === "extreme") {
+    return {
+      label: "EXTREMA",
+      icon: "🚨",
+      border: "border-red-400/70",
+      badge: "border-red-400 bg-red-500/25 text-red-200",
+    };
+  }
+
+  if (severity === "severe") {
+    return {
+      label: "SEVERA",
+      icon: "⚠️",
+      border: "border-orange-400/70",
+      badge: "border-orange-400 bg-orange-500/25 text-orange-200",
+    };
+  }
+
+  if (severity === "moderate") {
+    return {
+      label: "MODERADA",
+      icon: "🟡",
+      border: "border-yellow-400/70",
+      badge: "border-yellow-400 bg-yellow-500/20 text-yellow-100",
+    };
+  }
+
+  return {
+    label: value?.toUpperCase() || "ALERTA",
+    icon: "🌦️",
+    border: "border-sky-400/70",
+    badge: "border-sky-400 bg-sky-500/20 text-sky-100",
+  };
+}
+
+function formatWeatherDate(value: string | null) {
+  if (!value) return "Sin dato";
+
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return "Sin dato";
+  }
+
+  return date.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 function priorityOf(report: Report): Priority {
   if (["critical", "high", "medium", "low"].includes(report.aiPriority ?? "")) return report.aiPriority as Priority;
   if (report.category === "Emergencia" || report.category === "Delito / Robo") return "critical";
@@ -40,11 +104,14 @@ export default function MapaGrandePage() {
   const [now, setNow] = useState(new Date());
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
   const [alertCard, setAlertCard] = useState<AlertCard | null>(null);
+  const [weatherProjection, setWeatherProjection] =
+  useState<WeatherProjectionAlert | null>(null);
   const initializedRef = useRef(false);
   const seenIdsRef = useRef<Set<number>>(new Set());
   const alertTimerRef = useRef<number | null>(null);
   const focusKeyRef = useRef(0);
   const lastProjectionCommandRef = useRef(0);
+  const lastWeatherProjectionCommandRef = useRef(0);
 
   const showOperationalAlert = useCallback(async (report: Report, manual = false) => {
     if (report.latitude === null || report.longitude === null) return;
@@ -163,6 +230,84 @@ export default function MapaGrandePage() {
     const interval = window.setInterval(readProjectionCommand, 1000);
     return () => { window.removeEventListener("storage", onStorage); window.clearInterval(interval); };
   }, [ready, reports, showOperationalAlert]);
+  useEffect(() => {
+  if (!ready) return;
+
+  const readWeatherProjectionCommand = () => {
+    try {
+      const raw = window.localStorage.getItem(
+        "alerta_otamendi_weather_projection_v1"
+      );
+
+      if (!raw) return;
+
+      const command = JSON.parse(raw) as {
+        action?: "SHOW" | "HIDE";
+        timestamp?: number;
+        alert?: WeatherProjectionAlert;
+      };
+
+      if (
+        !command.timestamp ||
+        command.timestamp <=
+          lastWeatherProjectionCommandRef.current
+      ) {
+        return;
+      }
+
+      lastWeatherProjectionCommandRef.current =
+        command.timestamp;
+
+      if (command.action === "HIDE") {
+        setWeatherProjection(null);
+        return;
+      }
+
+      if (
+        command.action === "SHOW" &&
+        command.alert
+      ) {
+        setWeatherProjection(command.alert);
+      }
+    } catch (error) {
+      console.warn(
+        "No se pudo leer la proyección meteorológica:",
+        error
+      );
+    }
+  };
+
+  readWeatherProjectionCommand();
+
+  const onStorage = (event: StorageEvent) => {
+    if (
+      event.key ===
+      "alerta_otamendi_weather_projection_v1"
+    ) {
+      readWeatherProjectionCommand();
+    }
+  };
+
+  window.addEventListener(
+    "storage",
+    onStorage
+  );
+
+  const interval =
+    window.setInterval(
+      readWeatherProjectionCommand,
+      1000
+    );
+
+  return () => {
+    window.removeEventListener(
+      "storage",
+      onStorage
+    );
+
+    window.clearInterval(interval);
+  };
+}, [ready]);
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">Cargando mapa operativo…</main>;
 
@@ -194,7 +339,94 @@ export default function MapaGrandePage() {
           </div>
         </aside>
       )}
+{weatherProjection && (() => {
+  const weatherStyle =
+    weatherSeverityInfo(
+      weatherProjection.severity
+    );
 
+  return (
+    <aside
+      className={`pointer-events-none absolute bottom-5 left-5 z-[1150] w-[min(680px,calc(100vw-40px))] rounded-3xl border-2 ${weatherStyle.border} bg-slate-950/90 p-5 text-white shadow-2xl backdrop-blur-lg`}
+    >
+      <div className="flex items-start justify-between gap-4">
+
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.2em] text-sky-300">
+            🌦️ Servicio Meteorológico Nacional
+          </div>
+
+          <div className="mt-2 text-2xl font-black">
+            {weatherStyle.icon}{" "}
+            {weatherProjection.event}
+          </div>
+        </div>
+
+        <span
+          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-black ${weatherStyle.badge}`}
+        >
+          {weatherStyle.label}
+        </span>
+
+      </div>
+
+      {weatherProjection.headline && (
+        <p className="mt-3 text-base font-bold leading-6 text-slate-100">
+          {weatherProjection.headline}
+        </p>
+      )}
+
+      {weatherProjection.areaDescription && (
+        <div className="mt-3 rounded-2xl border border-slate-700/70 bg-black/20 p-3">
+          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+            📍 Zona afectada
+          </div>
+
+          <div className="mt-1 text-sm font-semibold text-slate-200">
+            {weatherProjection.areaDescription}
+          </div>
+        </div>
+      )}
+
+      {weatherProjection.description && (
+        <p className="mt-3 line-clamp-4 text-sm leading-6 text-slate-200">
+          {weatherProjection.description}
+        </p>
+      )}
+
+      {weatherProjection.instruction && (
+        <div className="mt-3 rounded-2xl border border-sky-500/20 bg-sky-950/25 p-3 text-sm leading-5 text-slate-200">
+          <span className="font-black text-sky-200">
+            Recomendación oficial:
+          </span>{" "}
+          {weatherProjection.instruction}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-700/60 pt-3 text-xs text-slate-400">
+
+        <span>
+          Inicio:{" "}
+          <b className="text-slate-200">
+            {formatWeatherDate(
+              weatherProjection.onsetAt
+            )}
+          </b>
+        </span>
+
+        <span>
+          Vigente hasta:{" "}
+          <b className="text-slate-200">
+            {formatWeatherDate(
+              weatherProjection.expiresAt
+            )}
+          </b>
+        </span>
+
+      </div>
+    </aside>
+  );
+})()} 
       <div className="pointer-events-none absolute right-4 top-4 z-[1000] flex items-center gap-2">
         <div className="rounded-xl border border-slate-700/80 bg-slate-950/90 px-3 py-2 text-right text-white shadow-xl backdrop-blur">
           <div className="text-sm font-black">{now.toLocaleTimeString("es-AR")}</div>
