@@ -842,6 +842,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           className={`fixed inset-x-4 top-4 z-[99999] mx-auto max-w-xl rounded-2xl border p-4 shadow-2xl ${alertVisual.box}`}
         >
           <div className="flex items-start justify-between gap-4">
+            
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">
                 Nueva alerta recibida
@@ -892,6 +893,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <WeatherAlertsPanel />
             <button
               onClick={() => setOperationalView((value) => !value)}
               className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${operationalView ? "border-cyan-300 bg-cyan-600 text-white shadow-lg shadow-cyan-950/40" : "border-cyan-500/40 bg-cyan-950/30 text-cyan-100 hover:bg-cyan-900/50"}`}
