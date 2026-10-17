@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import WeatherOperationalAlert from "./WeatherOperationalAlert";
 import {
   weatherAlertAffectsZones,
   type WeatherMonitorZone,
@@ -466,6 +467,25 @@ export default function WeatherAlertsPanel({
      MOSTRAR / OCULTAR ZONAS
   ======================================================= */
 
+  function showWeatherZonesOnMap() {
+    if (showWeatherZones) {
+      return;
+    }
+
+    setShowWeatherZones(
+      true
+    );
+
+    window.localStorage.setItem(
+      WEATHER_LAYER_KEY,
+      JSON.stringify({
+        enabled: true,
+        timestamp:
+          Date.now(),
+      })
+    );
+  }
+
   function toggleWeatherZones() {
     const nextValue =
       !showWeatherZones;
@@ -560,6 +580,19 @@ export default function WeatherAlertsPanel({
 
   return (
     <>
+      <WeatherOperationalAlert
+        alerts={alerts}
+        onOpenPanel={() =>
+          setOpen(true)
+        }
+        onShowZones={
+          showWeatherZonesOnMap
+        }
+        onProjectAlert={
+          projectAlert
+        }
+      />
+
       {/* BOTÓN PRINCIPAL */}
 
       <button
