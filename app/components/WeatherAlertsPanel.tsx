@@ -1,12 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  weatherAlertAffectsZones,
+  type WeatherMonitorZone,
+} from "@/lib/weatherJurisdiction";
 
 const WEATHER_PROJECTION_KEY =
   "alerta_otamendi_weather_projection_v1";
 
 const WEATHER_LAYER_KEY =
   "alerta_otamendi_weather_layer_v1";
+
+type WeatherArea = {
+  description?: string | null;
+  polygons?: number[][][];
+  circles?: Array<{
+    latitude: number;
+    longitude: number;
+    radiusKm: number;
+  }>;
+};
 
 type WeatherAlert = {
   id: number;
@@ -19,6 +33,7 @@ type WeatherAlert = {
   effectiveAt: string | null;
   expiresAt: string | null;
   areaDescription: string | null;
+  areas?: WeatherArea[];
 };
 
 type WeatherResponse = {
@@ -30,6 +45,10 @@ type WeatherResponse = {
     lastSuccessAt: string | null;
     consecutiveFailures: number;
   } | null;
+};
+
+type Props = {
+  monitorZones?: WeatherMonitorZone[];
 };
 
 /* =========================================================
@@ -148,11 +167,18 @@ function severityInfo(value: string | null) {
 }
 
 function formatDate(value: string | null) {
-  if (!value) return "Sin dato";
+  if (!value) {
+    return "Sin dato";
+  }
 
-  const date = new Date(value);
+  const date =
+    new Date(value);
 
-  if (!Number.isFinite(date.getTime())) {
+  if (
+    !Number.isFinite(
+      date.getTime()
+    )
+  ) {
     return "Sin dato";
   }
 
@@ -175,17 +201,21 @@ function relativeTime(value: string | null) {
   const timestamp =
     new Date(value).getTime();
 
-  if (!Number.isFinite(timestamp)) {
+  if (
+    !Number.isFinite(timestamp)
+  ) {
     return "sin sincronización";
   }
 
-  const minutes = Math.max(
-    0,
-    Math.floor(
-      (Date.now() - timestamp) /
-        60000
-    )
-  );
+  const minutes =
+    Math.max(
+      0,
+      Math.floor(
+        (Date.now() -
+          timestamp) /
+          60000
+      )
+    );
 
   if (minutes < 1) {
     return "hace menos de 1 min";
@@ -195,19 +225,30 @@ function relativeTime(value: string | null) {
     return `hace ${minutes} min`;
   }
 
-  const hours =
-    Math.floor(minutes / 60);
-
-  return `hace ${hours} h`;
+  return `hace ${Math.floor(
+    minutes / 60
+  )} h`;
 }
 
-export default function WeatherAlertsPanel() {
-  const [data, setData] =
+/* =========================================================
+   COMPONENTE
+========================================================= */
+
+export default function WeatherAlertsPanel({
+  monitorZones = [],
+}: Props) {
+  const [
+    data,
+    setData,
+  ] =
     useState<WeatherResponse | null>(
       null
     );
 
-  const [open, setOpen] =
+  const [
+    open,
+    setOpen,
+  ] =
     useState(false);
 
   const [
@@ -220,10 +261,12 @@ export default function WeatherAlertsPanel() {
     projectedId,
     setProjectedId,
   ] =
-    useState<number | null>(null);
+    useState<number | null>(
+      null
+    );
 
   /* =======================================================
-     LEER ESTADO DE CAPA METEOROLÓGICA
+     LEER ESTADO DE LA CAPA SMN
   ======================================================= */
 
   useEffect(() => {
@@ -233,7 +276,9 @@ export default function WeatherAlertsPanel() {
           WEATHER_LAYER_KEY
         );
 
-      if (!raw) return;
+      if (!raw) {
+        return;
+      }
 
       const stored =
         JSON.parse(raw) as {
@@ -241,7 +286,9 @@ export default function WeatherAlertsPanel() {
         };
 
       setShowWeatherZones(
-        Boolean(stored.enabled)
+        Boolean(
+          stored.enabled
+        )
       );
     } catch (error) {
       console.warn(
@@ -256,26 +303,32 @@ export default function WeatherAlertsPanel() {
   ======================================================= */
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
 
-    const load = async () => {
-      try {
-        const response =
-          await fetch(
-            "/api/weather/active",
-            {
-              cache: "no-store",
-            }
-          );
+    const load =
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "/api/weather/active",
+              {
+                cache:
+                  "no-store",
+              }
+            );
 
-        const json =
-          (await response.json()) as WeatherResponse;
+          const json =
+            (await response.json()) as WeatherResponse;
 
-        if (
-          !cancelled &&
-          response.ok &&
-          json.success
-        ) {
+          if (
+            cancelled ||
+            !response.ok ||
+            !json.success
+          ) {
+            return;
+          }
+
           setData({
             ...json,
 
@@ -309,28 +362,42 @@ export default function WeatherAlertsPanel() {
                     decodeWeatherText(
                       alert.areaDescription
                     ),
+
+                  areas:
+                    alert.areas?.map(
+                      (area) => ({
+                        ...area,
+
+                        description:
+                          decodeWeatherText(
+                            area.description ??
+                              null
+                          ),
+                      })
+                    ),
                 })
               ),
           });
+        } catch (error) {
+          console.error(
+            "Error cargando alertas meteorológicas:",
+            error
+          );
         }
-      } catch (error) {
-        console.error(
-          "Error cargando alertas meteorológicas:",
-          error
-        );
-      }
-    };
+      };
 
     void load();
 
     const interval =
       window.setInterval(
-        () => void load(),
+        () =>
+          void load(),
         60_000
       );
 
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
 
       window.clearInterval(
         interval
@@ -338,8 +405,34 @@ export default function WeatherAlertsPanel() {
     };
   }, []);
 
-  const alerts =
+  /*
+   * Alertas nacionales que devuelve el SMN.
+   */
+  const allAlerts =
     data?.alerts ?? [];
+
+  /*
+   * Solamente las alertas que afectan la jurisdicción
+   * asignada al operador.
+   *
+   * El administrador histórico, que no tiene zones,
+   * usa automáticamente General Alvarado.
+   */
+  const alerts =
+    useMemo(
+      () =>
+        allAlerts.filter(
+          (alert) =>
+            weatherAlertAffectsZones(
+              alert,
+              monitorZones
+            )
+        ),
+      [
+        allAlerts,
+        monitorZones,
+      ]
+    );
 
   const sourceHealthy =
     useMemo(() => {
@@ -348,7 +441,8 @@ export default function WeatherAlertsPanel() {
 
       if (
         !source?.lastSuccessAt ||
-        source.consecutiveFailures > 0
+        source.consecutiveFailures >
+          0
       ) {
         return false;
       }
@@ -360,13 +454,16 @@ export default function WeatherAlertsPanel() {
 
       return (
         Number.isFinite(last) &&
-        Date.now() - last <=
-          25 * 60 * 1000
+        Date.now() -
+          last <=
+          25 *
+            60 *
+            1000
       );
     }, [data]);
 
   /* =======================================================
-     MOSTRAR / OCULTAR ZONAS SMN
+     MOSTRAR / OCULTAR ZONAS
   ======================================================= */
 
   function toggleWeatherZones() {
@@ -380,8 +477,11 @@ export default function WeatherAlertsPanel() {
     window.localStorage.setItem(
       WEATHER_LAYER_KEY,
       JSON.stringify({
-        enabled: nextValue,
-        timestamp: Date.now(),
+        enabled:
+          nextValue,
+
+        timestamp:
+          Date.now(),
       })
     );
   }
@@ -395,15 +495,27 @@ export default function WeatherAlertsPanel() {
   ) {
     const command = {
       action: "SHOW",
-      timestamp: Date.now(),
+      timestamp:
+        Date.now(),
 
       alert: {
-        id: alert.id,
-        event: alert.event,
-        severity: alert.severity,
-        headline: alert.headline,
-        description: alert.description,
-        instruction: alert.instruction,
+        id:
+          alert.id,
+
+        event:
+          alert.event,
+
+        severity:
+          alert.severity,
+
+        headline:
+          alert.headline,
+
+        description:
+          alert.description,
+
+        instruction:
+          alert.instruction,
 
         areaDescription:
           alert.areaDescription,
@@ -419,27 +531,36 @@ export default function WeatherAlertsPanel() {
 
     window.localStorage.setItem(
       WEATHER_PROJECTION_KEY,
-      JSON.stringify(command)
+      JSON.stringify(
+        command
+      )
     );
 
-    setProjectedId(alert.id);
+    setProjectedId(
+      alert.id
+    );
   }
 
   function hideProjection() {
     window.localStorage.setItem(
       WEATHER_PROJECTION_KEY,
       JSON.stringify({
-        action: "HIDE",
-        timestamp: Date.now(),
+        action:
+          "HIDE",
+
+        timestamp:
+          Date.now(),
       })
     );
 
-    setProjectedId(null);
+    setProjectedId(
+      null
+    );
   }
 
   return (
     <>
-      {/* BOTÓN DEL CENTRO DE MONITOREO */}
+      {/* BOTÓN PRINCIPAL */}
 
       <button
         type="button"
@@ -451,10 +572,11 @@ export default function WeatherAlertsPanel() {
             ? "border-sky-400/40 bg-sky-950/40 text-sky-100 hover:bg-sky-900/50"
             : "border-emerald-500/30 bg-emerald-950/20 text-emerald-200 hover:bg-emerald-900/30"
         }`}
-        title="Alertas meteorológicas oficiales del SMN"
+        title="Alertas meteorológicas oficiales que afectan tu jurisdicción"
       >
         🌦️ SMN ·{" "}
-        {alerts.length > 0
+        {alerts.length >
+        0
           ? alerts.length
           : "Sin alertas"}
       </button>
@@ -478,6 +600,10 @@ export default function WeatherAlertsPanel() {
                 <h2 className="mt-1 text-xl font-black text-white">
                   Alertas del Servicio Meteorológico Nacional
                 </h2>
+
+                <p className="mt-1 text-xs text-slate-400">
+                  Filtradas automáticamente según la jurisdicción del operador.
+                </p>
               </div>
 
               <button
@@ -492,18 +618,75 @@ export default function WeatherAlertsPanel() {
 
             </div>
 
-            {/* ESTADO */}
+            {/* RESUMEN */}
+
+            <div className="border-b border-slate-800 p-4">
+
+              <div
+                className={`rounded-2xl border p-4 ${
+                  alerts.length >
+                  0
+                    ? "border-amber-500/30 bg-amber-950/20"
+                    : "border-emerald-500/25 bg-emerald-950/20"
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Tu jurisdicción
+                </p>
+
+                <p
+                  className={`mt-1 text-lg font-black ${
+                    alerts.length >
+                    0
+                      ? "text-amber-200"
+                      : "text-emerald-300"
+                  }`}
+                >
+                  {alerts.length ===
+                  0
+                    ? "✓ Sin alertas SMN activas"
+                    : alerts.length ===
+                        1
+                      ? "⚠️ 1 alerta SMN afecta tu jurisdicción"
+                      : `⚠️ ${alerts.length} alertas SMN afectan tu jurisdicción`}
+                </p>
+
+                <p className="mt-2 text-[11px] text-slate-500">
+                  SMN informa{" "}
+                  {
+                    allAlerts.length
+                  }{" "}
+                  alerta
+                  {allAlerts.length ===
+                  1
+                    ? ""
+                    : "s"}{" "}
+                  vigente
+                  {allAlerts.length ===
+                  1
+                    ? ""
+                    : "s"}{" "}
+                  en el feed nacional.
+                </p>
+
+              </div>
+
+            </div>
+
+            {/* ESTADO DE FUENTE */}
 
             <div className="grid grid-cols-2 gap-3 border-b border-slate-800 p-4">
 
               <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3">
 
                 <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                  Alertas vigentes
+                  En tu jurisdicción
                 </p>
 
                 <p className="mt-1 text-3xl font-black text-white">
-                  {alerts.length}
+                  {
+                    alerts.length
+                  }
                 </p>
 
               </div>
@@ -539,7 +722,7 @@ export default function WeatherAlertsPanel() {
 
             </div>
 
-            {/* CONTROL DE ZONAS METEOROLÓGICAS */}
+            {/* CONTROL DE ZONAS */}
 
             <div className="border-b border-slate-800 p-4">
 
@@ -548,7 +731,11 @@ export default function WeatherAlertsPanel() {
                 onClick={
                   toggleWeatherZones
                 }
-                className={`w-full rounded-2xl border px-4 py-3 text-sm font-black transition ${
+                disabled={
+                  alerts.length ===
+                  0
+                }
+                className={`w-full rounded-2xl border px-4 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${
                   showWeatherZones
                     ? "border-sky-400 bg-sky-500/20 text-sky-100"
                     : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
@@ -560,7 +747,7 @@ export default function WeatherAlertsPanel() {
               </button>
 
               <p className="mt-2 text-center text-[10px] text-slate-500">
-                Muestra las áreas oficiales afectadas sobre el mapa operativo.
+                Solo se mostrarán las áreas meteorológicas que afecten tu jurisdicción.
               </p>
 
             </div>
@@ -569,9 +756,18 @@ export default function WeatherAlertsPanel() {
 
             <div className="flex-1 overflow-y-auto p-4">
 
-              {alerts.length === 0 ? (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-6 text-center text-emerald-300">
-                  ✓ No hay alertas meteorológicas oficiales vigentes.
+              {alerts.length ===
+              0 ? (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-6 text-center">
+
+                  <p className="text-lg font-black text-emerald-300">
+                    ✓ Sin alertas para tu jurisdicción
+                  </p>
+
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    Actualmente no hay alertas oficiales del SMN vigentes que afecten la zona asignada a este Centro de Monitoreo.
+                  </p>
+
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -589,7 +785,9 @@ export default function WeatherAlertsPanel() {
 
                       return (
                         <div
-                          key={alert.id}
+                          key={
+                            alert.id
+                          }
                           className={`rounded-2xl border p-4 ${severity.card}`}
                         >
 
