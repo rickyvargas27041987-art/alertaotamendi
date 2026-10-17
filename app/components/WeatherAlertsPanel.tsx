@@ -29,6 +29,76 @@ type WeatherResponse = {
   } | null;
 };
 
+/* =========================================================
+   LIMPIEZA DE TEXTO DEL SMN
+
+   Algunos mensajes llegan con entidades HTML, por ejemplo:
+   &#xE1;  -> á
+   &#xE9;  -> é
+
+   También puede ocurrir doble codificación:
+   &amp;#xE1; -> &#xE1; -> á
+========================================================= */
+
+function decodeWeatherText(value: string | null) {
+  if (!value) return value;
+
+  let result = value;
+
+  for (let i = 0; i < 3; i++) {
+    const previous = result;
+
+    result = result
+      .replace(
+        /&#x([0-9a-f]+);?/gi,
+        (_, code) => {
+          const number = parseInt(code, 16);
+
+          return Number.isFinite(number)
+            ? String.fromCodePoint(number)
+            : _;
+        }
+      )
+      .replace(
+        /&#([0-9]+);?/g,
+        (_, code) => {
+          const number = parseInt(code, 10);
+
+          return Number.isFinite(number)
+            ? String.fromCodePoint(number)
+            : _;
+        }
+      )
+      .replace(/&aacute;/gi, "á")
+      .replace(/&eacute;/gi, "é")
+      .replace(/&iacute;/gi, "í")
+      .replace(/&oacute;/gi, "ó")
+      .replace(/&uacute;/gi, "ú")
+      .replace(/&Aacute;/g, "Á")
+      .replace(/&Eacute;/g, "É")
+      .replace(/&Iacute;/g, "Í")
+      .replace(/&Oacute;/g, "Ó")
+      .replace(/&Uacute;/g, "Ú")
+      .replace(/&ntilde;/gi, "ñ")
+      .replace(/&Ntilde;/g, "Ñ")
+      .replace(/&uuml;/gi, "ü")
+      .replace(/&Uuml;/g, "Ü")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;/gi, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&amp;/gi, "&");
+
+    if (result === previous) {
+      break;
+    }
+  }
+
+  return result;
+}
+
 function severityInfo(value: string | null) {
   const severity =
     value?.toLowerCase() || "";
@@ -171,7 +241,42 @@ export default function WeatherAlertsPanel() {
           response.ok &&
           json.success
         ) {
-          setData(json);
+          setData({
+            ...json,
+
+            alerts:
+              json.alerts?.map(
+                (alert) => ({
+                  ...alert,
+
+                  event:
+                    decodeWeatherText(
+                      alert.event
+                    ) ||
+                    alert.event,
+
+                  headline:
+                    decodeWeatherText(
+                      alert.headline
+                    ),
+
+                  description:
+                    decodeWeatherText(
+                      alert.description
+                    ),
+
+                  instruction:
+                    decodeWeatherText(
+                      alert.instruction
+                    ),
+
+                  areaDescription:
+                    decodeWeatherText(
+                      alert.areaDescription
+                    ),
+                })
+              ),
+          });
         }
       } catch (error) {
         console.error(
