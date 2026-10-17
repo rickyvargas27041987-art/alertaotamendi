@@ -602,15 +602,15 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const role =
+    const roleValue =
       body.role === undefined
         ? current.role
-        : String(
-            body.role
-          ) as MemberRole;
+        : String(body.role);
 
     if (
-      !MEMBER_ROLES.includes(role)
+      !MEMBER_ROLES.includes(
+        roleValue as MemberRole
+      )
     ) {
       return NextResponse.json(
         {
@@ -621,6 +621,9 @@ export async function PATCH(request: Request) {
         { status: 400 }
       );
     }
+
+    const role =
+      roleValue as MemberRole;
 
     const active =
       typeof body.active ===
