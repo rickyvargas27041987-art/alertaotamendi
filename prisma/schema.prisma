@@ -337,17 +337,23 @@ model MonitoringUser {
 // Código temporal que cada Centro comparte con personal operativo autorizado.
 // El código visible se deriva de forma segura y nunca se guarda en texto plano.
 model OperationalCodeConfig {
-  id                Int                   @id @default(autoincrement())
-  centerKey         String                @unique
-  ownerUserId       Int?                  @unique
-  revision          Int                   @default(0)
-  rotationStartedAt DateTime              @default(now())
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  ownerUser         MonitoringUser?       @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  sessions          OperationalSession[]
-  auditLogs         OperationalAuditLog[]
+  id             Int     @id @default(autoincrement())
+  centerKey      String  @unique
+  ownerUserId    Int?    @unique
+  organizationId Int?    @unique(map: "OperationalCodeConfig_organizationId_key")
 
+  revision          Int      @default(0)
+  rotationStartedAt DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  ownerUser    MonitoringUser?          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  organization OperationalOrganization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  sessions  OperationalSession[]
+  auditLogs OperationalAuditLog[]
+
+  @@index([organizationId], map: "OperationalCodeConfig_organizationId_idx")
   @@index([updatedAt])
 }
 
@@ -716,6 +722,8 @@ model OperationalOrganization {
 
   zones   OperationalOrganizationZone[]
   members OperationalOrganizationMember[]
+
+  mobileAccessConfig OperationalCodeConfig?
 
   coordinatedIncidents OperationalIncident[] @relation("IncidentCoordinatorOrganization")
 
