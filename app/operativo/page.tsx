@@ -131,8 +131,6 @@ export default function OperationalPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [code, setCode] = useState("");
   const [officerName, setOfficerName] = useState("");
-  const [agency, setAgency] = useState("");
-  const [serviceType, setServiceType] = useState("POLICE");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Report | null>(null);
@@ -409,7 +407,7 @@ export default function OperationalPage() {
       const response = await fetch("/api/operational/access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, officerName, agency, serviceType }),
+        body: JSON.stringify({ code, officerName }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "No se pudo habilitar el acceso.");
@@ -512,10 +510,17 @@ export default function OperationalPage() {
         <div className="mx-auto w-full max-w-md">
           <Link href="/" className="text-sm font-bold text-slate-400">← Volver a Alerta Otamendi</Link>
           <div className="mt-6 rounded-[32px] border border-cyan-800/60 bg-slate-900 p-6 shadow-2xl">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-3xl">🛡️</div>
-            <p className="mt-5 text-center text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">Acceso restringido</p>
-            <h1 className="mt-2 text-center text-2xl font-black">Acceso operativo</h1>
-            <p className="mt-2 text-center text-sm leading-5 text-slate-400">Herramienta destinada exclusivamente a personal autorizado.</p>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-600 text-3xl">📱</div>
+          <p className="mt-5 text-center text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">
+           Red Operativa · Acceso temporal
+                </p>
+          <h1 className="mt-2 text-center text-2xl font-black">
+              Acceso móvil operativo
+          </h1>
+          <p className="mt-2 text-center text-sm leading-5 text-slate-400">
+             Ingresá el código entregado por tu organismo y tu nombre.
+              La institución y la jurisdicción se asignan automáticamente.
+                 </p>
 
             <form onSubmit={login} className="mt-6 space-y-4">
               <label className="block text-sm font-semibold">Código de 6 dígitos
@@ -556,7 +561,7 @@ export default function OperationalPage() {
         <header className="sticky top-0 z-20 rounded-3xl border border-slate-800 bg-slate-950/95 p-4 shadow-xl backdrop-blur">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">🛡️ Acceso operativo activo</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">📱 Acceso móvil activo</p>
               <h1 className="mt-1 text-xl font-black">{session.officerName}</h1>
               <p className="text-xs text-slate-400">{session.agency} · {serviceLabels[session.serviceType] || session.serviceType}</p>
             </div>
@@ -595,7 +600,7 @@ export default function OperationalPage() {
 
               {pushState === "fallback" && (
                 <p className="mt-2 text-xs font-semibold text-cyan-200">
-                  Para recibir avisos con la pantalla cerrada, abrí el Acceso Operativo en Chrome/Edge compatible o instalalo como aplicación.
+                  Para recibir avisos con la pantalla cerrada, abrí el Acceso Móvil Operativo en Chrome/Edge compatible o instalalo como aplicación.
                 </p>
               )}
             </div>
