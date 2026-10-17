@@ -133,29 +133,32 @@ function getPushTitle(
     | "high"
     | "normal"
 ) {
+  const categoryLabel =
+    displayCategory(category);
+
   if (priority === "critical") {
-    return "🚨 Alerta importante cerca tuyo";
+    return `🚨 Alerta Otamendi · ${categoryLabel}`;
   }
 
   if (priority === "high") {
-    return "⚠️ Alerta cercana";
+    return `⚠️ Alerta Otamendi · ${categoryLabel}`;
   }
 
   if (
     category ===
     "Persona sospechosa"
   ) {
-    return "👤 Aviso cerca tuyo";
+    return "👤 Alerta Otamendi · Aviso cercano";
   }
 
   if (
     category ===
     "Vehículo sospechoso"
   ) {
-    return "🚗 Aviso cerca tuyo";
+    return "🚗 Alerta Otamendi · Aviso cercano";
   }
 
-  return "📍 Alerta cercana";
+  return "📍 Alerta Otamendi · Aviso cercano";
 }
 
 /* =========================================================
@@ -417,6 +420,9 @@ async function notifyNearbyReport(
             tag: `report-${report.id}`,
             reportId: report.id,
             priority,
+            showWhenBackground:
+              priority === "critical" ||
+              priority === "high",
           });
           if (result.invalidToken) {
             await prisma.fcmDevice.update({ where: { id: device.id }, data: { enabled: false } });
@@ -505,8 +511,8 @@ async function sendPreventivePush(alert: {
   );
 
   const title = escalation
-    ? "⚠️ ACTUALIZACIÓN PREVENTIVA IMPORTANTE"
-    : "⚠️ AVISO PREVENTIVO EN LA ZONA";
+    ? "⚠️ Alerta Otamendi · Actualización preventiva"
+    : "⚠️ Alerta Otamendi · Aviso preventivo";
   const body = escalation
     ? `La alerta preventiva aumentó a ${alert.reportCount} reportes coincidentes en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia.`
     : "Se recibieron varios reportes coincidentes sobre una situación sospechosa en el sector. Mantenga precaución y utilice los servicios oficiales ante una emergencia.";
@@ -539,6 +545,7 @@ async function sendPreventivePush(alert: {
         url: "/mapa",
         tag,
         priority: "high",
+        showWhenBackground: true,
       });
       if (result.invalidToken) {
         await prisma.fcmDevice.update({ where: { id: device.id }, data: { enabled: false } });
