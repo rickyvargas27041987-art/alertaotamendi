@@ -806,19 +806,9 @@ model OperationalIncident {
   // como relación normal sin @unique en este archivo.
   report Report? @relation("IncidentSourceReport", fields: [reportId], references: [id], onDelete: SetNull)
 
-  coordinatorOrganization OperationalOrganization? @relation(
-    "IncidentCoordinatorOrganization",
-    fields: [coordinatorOrganizationId],
-    references: [id],
-    onDelete: SetNull
-  )
+  coordinatorOrganization OperationalOrganization? @relation("IncidentCoordinatorOrganization", fields: [coordinatorOrganizationId], references: [id], onDelete: SetNull)
 
-  coordinatorUser MonitoringUser? @relation(
-    "IncidentCoordinatorUser",
-    fields: [coordinatorUserId],
-    references: [id],
-    onDelete: SetNull
-  )
+  coordinatorUser MonitoringUser? @relation("IncidentCoordinatorUser", fields: [coordinatorUserId], references: [id], onDelete: SetNull)
 
   responses OperationalIncidentResponse[]
   events    OperationalIncidentEvent[]
@@ -864,26 +854,11 @@ model OperationalIncidentResponse {
 
   incident OperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
-  organization OperationalOrganization @relation(
-    "IncidentResponseOrganization",
-    fields: [organizationId],
-    references: [id],
-    onDelete: Cascade
-  )
+  organization OperationalOrganization @relation("IncidentResponseOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
 
-  requestedByOrganization OperationalOrganization? @relation(
-    "IncidentResponseRequesterOrganization",
-    fields: [requestedByOrganizationId],
-    references: [id],
-    onDelete: SetNull
-  )
+  requestedByOrganization OperationalOrganization? @relation("IncidentResponseRequesterOrganization", fields: [requestedByOrganizationId], references: [id], onDelete: SetNull)
 
-  requestedByUser MonitoringUser? @relation(
-    "IncidentResponseRequesterUser",
-    fields: [requestedByUserId],
-    references: [id],
-    onDelete: SetNull
-  )
+  requestedByUser MonitoringUser? @relation("IncidentResponseRequesterUser", fields: [requestedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([incidentId, organizationId], map: "OperationalIncidentResponse_incidentId_organizationId_key")
   @@index([organizationId, status])
@@ -914,18 +889,9 @@ model OperationalIncidentEvent {
 
   incident OperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
-  organization OperationalOrganization? @relation(
-    fields: [organizationId],
-    references: [id],
-    onDelete: SetNull
-  )
+  organization OperationalOrganization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  actorUser MonitoringUser? @relation(
-    "IncidentEventActorUser",
-    fields: [actorUserId],
-    references: [id],
-    onDelete: SetNull
-  )
+  actorUser MonitoringUser? @relation("IncidentEventActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([incidentId, createdAt])
   @@index([organizationId, createdAt])
