@@ -893,7 +893,11 @@ const [aiError, setAiError] = useState<string | null>(null);
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <WeatherAlertsPanel />
+             <WeatherAlertsPanel
+              monitorZones={
+              currentUser?.zones ?? []
+                     }
+                     />
             <button
               onClick={() => setOperationalView((value) => !value)}
               className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${operationalView ? "border-cyan-300 bg-cyan-600 text-white shadow-lg shadow-cyan-950/40" : "border-cyan-500/40 bg-cyan-950/30 text-cyan-100 hover:bg-cyan-900/50"}`}
