@@ -41,6 +41,12 @@ model Report {
   aiReason       String?
   aiAnalyzedAt   DateTime?
 
+  // RED OPERATIVA
+  // La base PostgreSQL limita a un incidente principal por reporte mediante
+  // un índice único parcial. Prisma lo modela como lista porque no representa
+  // índices únicos parciales directamente.
+  operationalIncidents OperationalIncident[] @relation("IncidentSourceReport")
+
   @@index([assignedToId])
   @@index([status, createdAt])
   @@index([province, district, locality])
@@ -313,6 +319,12 @@ model MonitoringUser {
   auditLogs             AuditLog[]
   assignedReports       Report[]               @relation("AssignedReports")
   operationalCodeConfig OperationalCodeConfig?
+
+  // RED OPERATIVA MULTI-ORGANISMO
+  operationalMemberships          OperationalOrganizationMember[] @relation("OrganizationMemberUser")
+  coordinatedOperationalIncidents OperationalIncident[]           @relation("IncidentCoordinatorUser")
+  requestedOperationalResponses   OperationalIncidentResponse[]   @relation("IncidentResponseRequesterUser")
+  operationalIncidentEvents       OperationalIncidentEvent[]      @relation("IncidentEventActorUser")
 
   @@index([active])
   @@index([role])
@@ -658,6 +670,268 @@ model WeatherSourceState {
   @@index([source, feed])
   @@index([lastSuccessAt])
 }
+
+// =========================================================
+// RED OPERATIVA MULTI-ORGANISMO
+// =========================================================
+//
+// Esta capa convive con el Acceso Operativo actual durante la transición.
+// No reemplaza todavía OperationalSession ni OperationalResponseState.
+// =========================================================
+
+model OperationalNetwork {
+  id       Int     @id @default(autoincrement())
+  name     String
+  province String
+  district String
+  active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizations OperationalOrganization[]
+  incidents     OperationalIncident[]
+
+  @@unique([province, district], map: "OperationalNetwork_province_district_key")
+  @@index([active])
+}
+
+model OperationalOrganization {
+  id        Int    @id @default(autoincrement())
+  networkId Int
+  name      String
+  shortName String?
+  type      String
+  active    Boolean @default(true)
+
+  // Un Centro de Monitoreo o una institución autorizada puede asumir
+  // coordinación general del incidente sin controlar las acciones de
+  // los demás organismos.
+  canCoordinate Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  network OperationalNetwork @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  zones   OperationalOrganizationZone[]
+  members OperationalOrganizationMember[]
+
+  coordinatedIncidents OperationalIncident[] @relation("IncidentCoordinatorOrganization")
+
+  responses          OperationalIncidentResponse[] @relation("IncidentResponseOrganization")
+  requestedResponses OperationalIncidentResponse[] @relation("IncidentResponseRequesterOrganization")
+
+  incidentEvents OperationalIncidentEvent[]
+
+  @@unique([networkId, name], map: "OperationalOrganization_networkId_name_key")
+  @@index([networkId, type, active])
+}
+
+model OperationalOrganizationZone {
+  id             Int @id @default(autoincrement())
+  organizationId Int
+
+  province String
+  district String
+  locality String?
+
+  createdAt DateTime @default(now())
+
+  organization OperationalOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // La unicidad con locality NULL se encuentra protegida en PostgreSQL
+  // mediante un índice de expresión COALESCE creado por el script SQL.
+  @@index([organizationId])
+  @@index([province, district, locality])
+}
+
+model OperationalOrganizationMember {
+  id             Int @id @default(autoincrement())
+  organizationId Int
+  userId         Int
+
+  // ADMIN, COORDINATOR, DISPATCHER, OPERATOR o VIEWER.
+  role String @default("OPERATOR")
+
+  active    Boolean @default(true)
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization OperationalOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         MonitoringUser          @relation("OrganizationMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId], map: "OperationalOrganizationMember_organizationId_userId_key")
+  @@index([userId, active])
+  @@index([organizationId, active])
+}
+
+model OperationalIncident {
+  id        Int @id @default(autoincrement())
+  networkId Int
+
+  // REPORT, WEATHER o MANUAL.
+  source    String @default("REPORT")
+  reportId  Int?
+  sourceRef String?
+
+  title       String
+  category    String
+  priority    String @default("normal")
+  status      String @default("NEW")
+  description String?
+
+  latitude  Float?
+  longitude Float?
+  province  String?
+  district  String?
+  locality  String?
+
+  coordinatorOrganizationId Int?
+  coordinatorUserId         Int?
+
+  openedAt     DateTime  @default(now())
+  controlledAt DateTime?
+  resolvedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  network OperationalNetwork @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  // PostgreSQL aplica un índice único parcial sobre reportId cuando no es NULL.
+  // Prisma no expresa ese tipo de índice, por eso la relación se mantiene
+  // como relación normal sin @unique en este archivo.
+  report Report? @relation("IncidentSourceReport", fields: [reportId], references: [id], onDelete: SetNull)
+
+  coordinatorOrganization OperationalOrganization? @relation(
+    "IncidentCoordinatorOrganization",
+    fields: [coordinatorOrganizationId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  coordinatorUser MonitoringUser? @relation(
+    "IncidentCoordinatorUser",
+    fields: [coordinatorUserId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  responses OperationalIncidentResponse[]
+  events    OperationalIncidentEvent[]
+
+  @@index([networkId, status, priority])
+  @@index([province, district, locality])
+  @@index([openedAt])
+  @@index([reportId])
+  @@index([source, sourceRef])
+}
+
+model OperationalIncidentResponse {
+  id             Int @id @default(autoincrement())
+  incidentId     Int
+  organizationId Int
+
+  // RECOMMENDED, REQUESTED, RECEIVED, DISPATCHED, EN_ROUTE,
+  // ON_SCENE, FINISHED, UNAVAILABLE, NOT_REQUIRED o CANCELLED.
+  status String @default("REQUESTED")
+
+  // AUTO, RECOMMENDED, MANUAL o SUPPORT_REQUEST.
+  routingMode String @default("MANUAL")
+
+  requestPriority String @default("NORMAL")
+  requestReason   String?
+
+  requestedByOrganizationId Int?
+  requestedByUserId         Int?
+
+  resourceLabel   String?
+  responsibleName String?
+
+  requestedAt  DateTime  @default(now())
+  receivedAt   DateTime?
+  dispatchedAt DateTime?
+  enRouteAt    DateTime?
+  onSceneAt    DateTime?
+  finishedAt   DateTime?
+  declinedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  incident OperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  organization OperationalOrganization @relation(
+    "IncidentResponseOrganization",
+    fields: [organizationId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  requestedByOrganization OperationalOrganization? @relation(
+    "IncidentResponseRequesterOrganization",
+    fields: [requestedByOrganizationId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  requestedByUser MonitoringUser? @relation(
+    "IncidentResponseRequesterUser",
+    fields: [requestedByUserId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  @@unique([incidentId, organizationId], map: "OperationalIncidentResponse_incidentId_organizationId_key")
+  @@index([organizationId, status])
+  @@index([incidentId, status])
+  @@index([updatedAt])
+}
+
+model OperationalIncidentEvent {
+  id         Int @id @default(autoincrement())
+  incidentId Int
+
+  organizationId Int?
+  actorUserId     Int?
+
+  actorName String
+  actorRole String?
+
+  // INCIDENT_CREATED, COORDINATION_TAKEN, ORGANIZATION_REQUESTED,
+  // RESPONSE_RECEIVED, RESOURCE_DISPATCHED, EN_ROUTE, ON_SCENE,
+  // RESPONSE_FINISHED, SUPPORT_REQUESTED, NOTE_ADDED,
+  // INCIDENT_CONTROLLED o INCIDENT_RESOLVED.
+  type String
+
+  message  String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  incident OperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  organization OperationalOrganization? @relation(
+    fields: [organizationId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  actorUser MonitoringUser? @relation(
+    "IncidentEventActorUser",
+    fields: [actorUserId],
+    references: [id],
+    onDelete: SetNull
+  )
+
+  @@index([incidentId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([type])
+}
+
 
 // Límites compartidos entre instancias de Vercel. La clave se guarda como hash,
 // nunca como dirección IP en texto plano.
