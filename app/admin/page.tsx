@@ -7,6 +7,7 @@ import OperationalStatistics from "../components/OperationalStatistics";
 import OperationalAccessPanel from "../components/OperationalAccessPanel";
 import AppUserStatistics from "../components/AppUserStatistics";
 import WeatherAlertsPanel from "../components/WeatherAlertsPanel";
+import OperationalNetworkPanel from "../components/OperationalNetworkPanel";
 
 const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
   ssr: false,
@@ -936,6 +937,7 @@ const [aiError, setAiError] = useState<string | null>(null);
             >
               🖥️ Mapa grande
             </a>
+            {!isInstitutional && <OperationalNetworkPanel />}
             {!isInstitutional && <OperationalAccessPanel />}
             {!isInstitutional && (
               <a
