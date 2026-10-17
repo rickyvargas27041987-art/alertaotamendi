@@ -5,6 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 const WEATHER_PROJECTION_KEY =
   "alerta_otamendi_weather_projection_v1";
 
+const WEATHER_LAYER_KEY =
+  "alerta_otamendi_weather_layer_v1";
+
 type WeatherAlert = {
   id: number;
   event: string;
@@ -31,13 +34,6 @@ type WeatherResponse = {
 
 /* =========================================================
    LIMPIEZA DE TEXTO DEL SMN
-
-   Algunos mensajes llegan con entidades HTML, por ejemplo:
-   &#xE1;  -> á
-   &#xE9;  -> é
-
-   También puede ocurrir doble codificación:
-   &amp;#xE1; -> &#xE1; -> á
 ========================================================= */
 
 function decodeWeatherText(value: string | null) {
@@ -215,10 +211,49 @@ export default function WeatherAlertsPanel() {
     useState(false);
 
   const [
+    showWeatherZones,
+    setShowWeatherZones,
+  ] =
+    useState(false);
+
+  const [
     projectedId,
     setProjectedId,
   ] =
     useState<number | null>(null);
+
+  /* =======================================================
+     LEER ESTADO DE CAPA METEOROLÓGICA
+  ======================================================= */
+
+  useEffect(() => {
+    try {
+      const raw =
+        window.localStorage.getItem(
+          WEATHER_LAYER_KEY
+        );
+
+      if (!raw) return;
+
+      const stored =
+        JSON.parse(raw) as {
+          enabled?: boolean;
+        };
+
+      setShowWeatherZones(
+        Boolean(stored.enabled)
+      );
+    } catch (error) {
+      console.warn(
+        "No se pudo leer el estado de las zonas SMN:",
+        error
+      );
+    }
+  }, []);
+
+  /* =======================================================
+     CARGAR ALERTAS
+  ======================================================= */
 
   useEffect(() => {
     let cancelled = false;
@@ -329,6 +364,31 @@ export default function WeatherAlertsPanel() {
           25 * 60 * 1000
       );
     }, [data]);
+
+  /* =======================================================
+     MOSTRAR / OCULTAR ZONAS SMN
+  ======================================================= */
+
+  function toggleWeatherZones() {
+    const nextValue =
+      !showWeatherZones;
+
+    setShowWeatherZones(
+      nextValue
+    );
+
+    window.localStorage.setItem(
+      WEATHER_LAYER_KEY,
+      JSON.stringify({
+        enabled: nextValue,
+        timestamp: Date.now(),
+      })
+    );
+  }
+
+  /* =======================================================
+     PROYECCIÓN EN MAPA GRANDE
+  ======================================================= */
 
   function projectAlert(
     alert: WeatherAlert
@@ -476,6 +536,32 @@ export default function WeatherAlertsPanel() {
                 </p>
 
               </div>
+
+            </div>
+
+            {/* CONTROL DE ZONAS METEOROLÓGICAS */}
+
+            <div className="border-b border-slate-800 p-4">
+
+              <button
+                type="button"
+                onClick={
+                  toggleWeatherZones
+                }
+                className={`w-full rounded-2xl border px-4 py-3 text-sm font-black transition ${
+                  showWeatherZones
+                    ? "border-sky-400 bg-sky-500/20 text-sky-100"
+                    : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                {showWeatherZones
+                  ? "🗺️ Ocultar zonas SMN del mapa"
+                  : "🗺️ Mostrar zonas SMN en el mapa"}
+              </button>
+
+              <p className="mt-2 text-center text-[10px] text-slate-500">
+                Muestra las áreas oficiales afectadas sobre el mapa operativo.
+              </p>
 
             </div>
 
