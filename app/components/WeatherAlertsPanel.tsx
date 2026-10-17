@@ -1,10 +1,9 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const WEATHER_PROJECTION_KEY =
+  "alerta_otamendi_weather_projection_v1";
 
 type WeatherAlert = {
   id: number;
@@ -30,9 +29,7 @@ type WeatherResponse = {
   } | null;
 };
 
-function severityInfo(
-  value: string | null
-) {
+function severityInfo(value: string | null) {
   const severity =
     value?.toLowerCase() || "";
 
@@ -84,21 +81,12 @@ function severityInfo(
   };
 }
 
-function formatDate(
-  value: string | null
-) {
-  if (!value) {
-    return "Sin dato";
-  }
+function formatDate(value: string | null) {
+  if (!value) return "Sin dato";
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    !Number.isFinite(
-      date.getTime()
-    )
-  ) {
+  if (!Number.isFinite(date.getTime())) {
     return "Sin dato";
   }
 
@@ -113,9 +101,7 @@ function formatDate(
   );
 }
 
-function relativeTime(
-  value: string | null
-) {
+function relativeTime(value: string | null) {
   if (!value) {
     return "sin sincronización";
   }
@@ -127,14 +113,13 @@ function relativeTime(
     return "sin sincronización";
   }
 
-  const minutes =
-    Math.max(
-      0,
-      Math.floor(
-        (Date.now() - timestamp) /
-          60000
-      )
-    );
+  const minutes = Math.max(
+    0,
+    Math.floor(
+      (Date.now() - timestamp) /
+        60000
+    )
+  );
 
   if (minutes < 1) {
     return "hace menos de 1 min";
@@ -151,62 +136,50 @@ function relativeTime(
 }
 
 export default function WeatherAlertsPanel() {
-  const [
-    data,
-    setData,
-  ] =
+  const [data, setData] =
     useState<WeatherResponse | null>(
       null
     );
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(true);
+  const [open, setOpen] =
+    useState(false);
 
   const [
-    expanded,
-    setExpanded,
+    projectedId,
+    setProjectedId,
   ] =
-    useState(false);
+    useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    const load =
-      async () => {
-        try {
-          const response =
-            await fetch(
-              "/api/weather/active",
-              {
-                cache:
-                  "no-store",
-              }
-            );
-
-          const json =
-            (await response.json()) as WeatherResponse;
-
-          if (
-            !cancelled &&
-            response.ok &&
-            json.success
-          ) {
-            setData(json);
-          }
-        } catch (error) {
-          console.error(
-            "Error cargando panel meteorológico:",
-            error
+    const load = async () => {
+      try {
+        const response =
+          await fetch(
+            "/api/weather/active",
+            {
+              cache: "no-store",
+            }
           );
-        } finally {
-          if (!cancelled) {
-            setLoading(false);
-          }
+
+        const json =
+          (await response.json()) as WeatherResponse;
+
+        if (
+          !cancelled &&
+          response.ok &&
+          json.success
+        ) {
+          setData(json);
         }
-      };
+      } catch (error) {
+        console.error(
+          "Error cargando alertas meteorológicas:",
+          error
+        );
+      }
+    };
 
     void load();
 
@@ -227,11 +200,6 @@ export default function WeatherAlertsPanel() {
 
   const alerts =
     data?.alerts ?? [];
-
-  const visibleAlerts =
-    expanded
-      ? alerts
-      : alerts.slice(0, 3);
 
   const sourceHealthy =
     useMemo(() => {
@@ -257,190 +225,320 @@ export default function WeatherAlertsPanel() {
       );
     }, [data]);
 
+  function projectAlert(
+    alert: WeatherAlert
+  ) {
+    const command = {
+      action: "SHOW",
+      timestamp: Date.now(),
+
+      alert: {
+        id: alert.id,
+        event: alert.event,
+        severity: alert.severity,
+        headline: alert.headline,
+        description: alert.description,
+        instruction: alert.instruction,
+
+        areaDescription:
+          alert.areaDescription,
+
+        onsetAt:
+          alert.onsetAt ||
+          alert.effectiveAt,
+
+        expiresAt:
+          alert.expiresAt,
+      },
+    };
+
+    window.localStorage.setItem(
+      WEATHER_PROJECTION_KEY,
+      JSON.stringify(command)
+    );
+
+    setProjectedId(alert.id);
+  }
+
+  function hideProjection() {
+    window.localStorage.setItem(
+      WEATHER_PROJECTION_KEY,
+      JSON.stringify({
+        action: "HIDE",
+        timestamp: Date.now(),
+      })
+    );
+
+    setProjectedId(null);
+  }
+
   return (
-    <div className="rounded-3xl border border-sky-500/25 bg-sky-950/10 p-3">
+    <>
+      {/* BOTÓN DEL CENTRO DE MONITOREO */}
 
-      <div className="flex items-start justify-between gap-3">
+      <button
+        type="button"
+        onClick={() =>
+          setOpen(true)
+        }
+        className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${
+          alerts.length > 0
+            ? "border-sky-400/40 bg-sky-950/40 text-sky-100 hover:bg-sky-900/50"
+            : "border-emerald-500/30 bg-emerald-950/20 text-emerald-200 hover:bg-emerald-900/30"
+        }`}
+        title="Alertas meteorológicas oficiales del SMN"
+      >
+        🌦️ SMN ·{" "}
+        {alerts.length > 0
+          ? alerts.length
+          : "Sin alertas"}
+      </button>
 
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-300">
-            🌦️ Meteorología oficial
-          </p>
+      {/* MENÚ FLOTANTE */}
 
-          <h2 className="mt-1 text-base font-black">
-            Alertas SMN
-          </h2>
-        </div>
+      {open && (
+        <div className="fixed inset-0 z-[99999] flex items-start justify-center bg-black/60 p-4 pt-16 backdrop-blur-sm">
 
-        <span
-          className={`rounded-full border px-2 py-1 text-[10px] font-black ${
-            sourceHealthy
-              ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-              : "border-amber-500/30 bg-amber-500/15 text-amber-300"
-          }`}
-        >
-          {sourceHealthy
-            ? "● SMN CONECTADO"
-            : "● REVISAR FUENTE"}
-        </span>
+          <div className="flex max-h-[calc(100vh-100px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-sky-500/30 bg-slate-950 shadow-2xl">
 
-      </div>
+            {/* ENCABEZADO */}
 
-      <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
 
-        <div>
-          <p className="text-[10px] uppercase text-slate-500">
-            Alertas vigentes
-          </p>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-300">
+                  🌦️ Meteorología oficial
+                </p>
 
-          <p className="text-2xl font-black">
-            {alerts.length}
-          </p>
-        </div>
+                <h2 className="mt-1 text-xl font-black text-white">
+                  Alertas del Servicio Meteorológico Nacional
+                </h2>
+              </div>
 
-        <div className="text-right text-[10px] text-slate-500">
-          <div>
-            Última consulta
-          </div>
-
-          <div className="font-semibold text-slate-300">
-            {relativeTime(
-              data?.source
-                ?.lastSuccessAt ??
-                null
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {loading && (
-        <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-center text-xs text-slate-500">
-          Cargando información del SMN…
-        </div>
-      )}
-
-      {!loading &&
-        alerts.length === 0 && (
-          <div className="mt-3 rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4 text-sm text-emerald-300">
-            ✓ No hay alertas meteorológicas oficiales vigentes.
-          </div>
-        )}
-
-      <div className="mt-3 space-y-2">
-
-        {visibleAlerts.map(
-          (alert) => {
-            const severity =
-              severityInfo(
-                alert.severity
-              );
-
-            return (
-              <div
-                key={alert.id}
-                className={`rounded-2xl border p-3 ${severity.card}`}
+              <button
+                type="button"
+                onClick={() =>
+                  setOpen(false)
+                }
+                className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 font-black text-slate-300 hover:bg-slate-800"
               >
+                ✕
+              </button>
 
-                <div className="flex items-start justify-between gap-2">
+            </div>
 
-                  <p className="text-sm font-black">
-                    {severity.icon}{" "}
-                    {alert.event}
-                  </p>
+            {/* ESTADO */}
 
-                  <span
-                    className={`rounded-full border px-2 py-1 text-[9px] font-black ${severity.badge}`}
-                  >
-                    {
-                      severity.label
-                    }
-                  </span>
+            <div className="grid grid-cols-2 gap-3 border-b border-slate-800 p-4">
 
-                </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3">
 
-                {alert.headline && (
-                  <p className="mt-2 text-xs leading-5 text-slate-300">
-                    {alert.headline}
-                  </p>
-                )}
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  Alertas vigentes
+                </p>
 
-                {alert.areaDescription && (
-                  <p className="mt-2 text-[11px] leading-4 text-slate-400">
-                    📍{" "}
-                    {
-                      alert.areaDescription
-                    }
-                  </p>
-                )}
-
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
-
-                  <div>
-                    <span className="text-slate-500">
-                      Inicio
-                    </span>
-
-                    <div className="font-semibold text-slate-300">
-                      {formatDate(
-                        alert.onsetAt ||
-                          alert.effectiveAt
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-slate-500">
-                      Vence
-                    </span>
-
-                    <div className="font-semibold text-slate-300">
-                      {formatDate(
-                        alert.expiresAt
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-
-                {alert.instruction && (
-                  <div className="mt-2 rounded-xl border border-white/5 bg-black/15 p-2 text-[11px] leading-4 text-slate-300">
-                    <b>
-                      Recomendación oficial:
-                    </b>{" "}
-                    {
-                      alert.instruction
-                    }
-                  </div>
-                )}
+                <p className="mt-1 text-3xl font-black text-white">
+                  {alerts.length}
+                </p>
 
               </div>
-            );
-          }
-        )}
 
-      </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3">
 
-      {alerts.length > 3 && (
-        <button
-          type="button"
-          onClick={() =>
-            setExpanded(
-              (value) => !value
-            )
-          }
-          className="mt-3 w-full rounded-xl border border-sky-500/25 bg-sky-950/20 px-3 py-2 text-xs font-black text-sky-200"
-        >
-          {expanded
-            ? "Mostrar menos"
-            : `Ver las ${alerts.length} alertas vigentes`}
-        </button>
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  Estado de la fuente
+                </p>
+
+                <p
+                  className={`mt-1 text-sm font-black ${
+                    sourceHealthy
+                      ? "text-emerald-300"
+                      : "text-amber-300"
+                  }`}
+                >
+                  {sourceHealthy
+                    ? "● SMN conectado"
+                    : "● Revisar fuente"}
+                </p>
+
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Última consulta{" "}
+                  {relativeTime(
+                    data?.source
+                      ?.lastSuccessAt ??
+                      null
+                  )}
+                </p>
+
+              </div>
+
+            </div>
+
+            {/* LISTA */}
+
+            <div className="flex-1 overflow-y-auto p-4">
+
+              {alerts.length === 0 ? (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-6 text-center text-emerald-300">
+                  ✓ No hay alertas meteorológicas oficiales vigentes.
+                </div>
+              ) : (
+                <div className="space-y-3">
+
+                  {alerts.map(
+                    (alert) => {
+                      const severity =
+                        severityInfo(
+                          alert.severity
+                        );
+
+                      const isProjected =
+                        projectedId ===
+                        alert.id;
+
+                      return (
+                        <div
+                          key={alert.id}
+                          className={`rounded-2xl border p-4 ${severity.card}`}
+                        >
+
+                          <div className="flex items-start justify-between gap-3">
+
+                            <div className="min-w-0">
+
+                              <p className="text-base font-black text-white">
+                                {
+                                  severity.icon
+                                }{" "}
+                                {
+                                  alert.event
+                                }
+                              </p>
+
+                              {alert.headline && (
+                                <p className="mt-2 text-sm leading-5 text-slate-300">
+                                  {
+                                    alert.headline
+                                  }
+                                </p>
+                              )}
+
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${severity.badge}`}
+                            >
+                              {
+                                severity.label
+                              }
+                            </span>
+
+                          </div>
+
+                          {alert.areaDescription && (
+                            <div className="mt-3 rounded-xl border border-white/5 bg-black/15 p-3 text-xs leading-5 text-slate-300">
+                              📍{" "}
+                              {
+                                alert.areaDescription
+                              }
+                            </div>
+                          )}
+
+                          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-500">
+                                Inicio
+                              </p>
+
+                              <p className="mt-1 font-semibold text-slate-300">
+                                {formatDate(
+                                  alert.onsetAt ||
+                                    alert.effectiveAt
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-[10px] uppercase text-slate-500">
+                                Vence
+                              </p>
+
+                              <p className="mt-1 font-semibold text-slate-300">
+                                {formatDate(
+                                  alert.expiresAt
+                                )}
+                              </p>
+                            </div>
+
+                          </div>
+
+                          {alert.instruction && (
+                            <div className="mt-3 rounded-xl border border-white/5 bg-black/20 p-3 text-xs leading-5 text-slate-300">
+
+                              <span className="font-black text-white">
+                                Recomendación oficial:
+                              </span>{" "}
+
+                              {
+                                alert.instruction
+                              }
+
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                projectAlert(
+                                  alert
+                                )
+                              }
+                              className={`rounded-xl px-3 py-2 text-xs font-black ${
+                                isProjected
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-blue-600 text-white hover:bg-blue-500"
+                              }`}
+                            >
+                              {isProjected
+                                ? "📺 Proyectada"
+                                : "📺 Proyectar en mapa"}
+                            </button>
+
+                            {isProjected && (
+                              <button
+                                type="button"
+                                onClick={
+                                  hideProjection
+                                }
+                                className="rounded-xl border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs font-black text-red-300 hover:bg-red-950/50"
+                              >
+                                ✕ Quitar de pantalla
+                              </button>
+                            )}
+
+                          </div>
+
+                        </div>
+                      );
+                    }
+                  )}
+
+                </div>
+              )}
+
+            </div>
+
+            <div className="border-t border-slate-800 px-5 py-3 text-xs text-slate-500">
+              Fuente oficial: Servicio Meteorológico Nacional · actualización automática cada 10 minutos.
+            </div>
+
+          </div>
+
+        </div>
       )}
-
-      <div className="mt-3 border-t border-slate-800 pt-2 text-[10px] text-slate-500">
-        Fuente oficial: Servicio Meteorológico Nacional
-      </div>
-
-    </div>
+    </>
   );
 }
