@@ -2,14 +2,12 @@ import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { audit, canOperateReport, canViewReport, getMonitorActor } from "@/lib/monitorAuth";
 import { notifyOperationalResponders, notifyPreventivePolice } from "@/lib/operationalNotifications";
-import {
-  calcularDistanciaKm,
-  sendWebPush,
-} from "@/lib/webPush";
+import { calcularDistanciaKm,sendWebPush,} from "@/lib/webPush";
 import { sendFcmNotification } from "@/lib/fcm";
 import { resolveJurisdiction } from "@/lib/jurisdiction";
 import { consumeRateLimit } from "@/lib/rateLimit";
 import { evaluateTrackingMatches } from "@/lib/trackingMatcher";
+import { syncOperationalIncidentFromReport } from "@/lib/operationalIncidentBridge";
 
 export const maxDuration = 60;
 
@@ -1007,6 +1005,9 @@ export async function POST(
         });
 
         const tasks: Promise<unknown>[] = [];
+        tasks.push(
+        syncOperationalIncidentFromReport(enrichedReport)
+           );
         const internalSecret = process.env.ADMIN_SESSION_SECRET;
         if (internalSecret && process.env.OPENAI_API_KEY) {
           tasks.push(
@@ -1167,6 +1168,14 @@ export async function PATCH(
           },
         }
       );
+        try {
+      await syncOperationalIncidentFromReport(updatedReport);
+    } catch (error) {
+      console.error(
+        `[RED OPERATIVA] No se pudo sincronizar el incidente del reporte #${id}:`,
+        error
+      );
+    }
 
     await audit(actor, "REPORT_STATUS_CHANGED", `${currentReport.status} -> ${status}`, id);
 
