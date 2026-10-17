@@ -36,6 +36,45 @@ type Network = {
   };
 };
 
+type MemberUser = {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+  organizationType: string;
+  active: boolean;
+  lastLoginAt: string | null;
+};
+
+type Membership = {
+  id: number;
+  role: string;
+  active: boolean;
+  isPrimary: boolean;
+  user: MemberUser;
+};
+
+type EligibleUser = {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+  organizationType: string;
+  active: boolean;
+  memberships: Array<{
+    id: number;
+    role: string;
+    active: boolean;
+    isPrimary: boolean;
+    organization: {
+      id: number;
+      name: string;
+      shortName: string | null;
+      type: string;
+    };
+  }>;
+};
+
 type FormState = {
   networkId: number | "";
   organizationId: number | null;
@@ -78,6 +117,14 @@ const TYPE_ICONS: Record<string, string> = {
   OTHER: "🏢",
 };
 
+const MEMBER_ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Administrador",
+  COORDINATOR: "Coordinador",
+  DISPATCHER: "Despachador",
+  OPERATOR: "Operador",
+  VIEWER: "Solo lectura",
+};
+
 function zoneText(zone: Zone) {
   return [zone.locality, zone.district, zone.province]
     .filter(Boolean)
@@ -93,6 +140,19 @@ export default function OperationalNetworkPanel() {
   const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [memberSavingId, setMemberSavingId] = useState<number | null>(null);
+  const [memberError, setMemberError] = useState("");
+  const [memberCanEdit, setMemberCanEdit] = useState(false);
+  const [memberOrganization, setMemberOrganization] =
+    useState<Organization | null>(null);
+  const [members, setMembers] = useState<Membership[]>([]);
+  const [eligibleUsers, setEligibleUsers] = useState<EligibleUser[]>([]);
+  const [newMemberUserId, setNewMemberUserId] = useState<number | "">("");
+  const [newMemberRole, setNewMemberRole] = useState("OPERATOR");
+  const [newMemberPrimary, setNewMemberPrimary] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -187,6 +247,166 @@ export default function OperationalNetworkPanel() {
     if (saving) return;
     setFormOpen(false);
     setForm(EMPTY_FORM);
+  }
+
+  const loadMembers = useCallback(async (organizationId: number) => {
+    setMembersLoading(true);
+    setMemberError("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/operational-network/members?organizationId=${organizationId}`,
+        { cache: "no-store" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "No se pudieron cargar los miembros."
+        );
+      }
+
+      setMemberCanEdit(Boolean(data.canEdit));
+      setMembers(Array.isArray(data.members) ? data.members : []);
+      setEligibleUsers(
+        Array.isArray(data.eligibleUsers) ? data.eligibleUsers : []
+      );
+    } catch (err) {
+      setMemberError(
+        err instanceof Error
+          ? err.message
+          : "No se pudieron cargar los miembros."
+      );
+    } finally {
+      setMembersLoading(false);
+    }
+  }, []);
+
+  function openMembers(organization: Organization) {
+    setMemberOrganization(organization);
+    setMembersOpen(true);
+    setMemberError("");
+    setNewMemberUserId("");
+    setNewMemberRole("OPERATOR");
+    setNewMemberPrimary(false);
+    void loadMembers(organization.id);
+  }
+
+  function closeMembers() {
+    if (memberSavingId !== null) return;
+    setMembersOpen(false);
+    setMemberOrganization(null);
+    setMembers([]);
+    setEligibleUsers([]);
+    setMemberError("");
+  }
+
+  async function addMember() {
+    if (
+      !memberOrganization ||
+      newMemberUserId === ""
+    ) {
+      setMemberError("Elegí un usuario para agregar.");
+      return;
+    }
+
+    setMemberSavingId(-1);
+    setMemberError("");
+
+    try {
+      const response = await fetch(
+        "/api/admin/operational-network/members",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            organizationId: memberOrganization.id,
+            userId: newMemberUserId,
+            role: newMemberRole,
+            isPrimary: newMemberPrimary,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "No se pudo agregar el miembro."
+        );
+      }
+
+      setNewMemberUserId("");
+      setNewMemberRole("OPERATOR");
+      setNewMemberPrimary(false);
+
+      await Promise.all([
+        loadMembers(memberOrganization.id),
+        load(),
+      ]);
+    } catch (err) {
+      setMemberError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo agregar el miembro."
+      );
+    } finally {
+      setMemberSavingId(null);
+    }
+  }
+
+  async function updateMember(
+    membershipId: number,
+    patch: {
+      role?: string;
+      active?: boolean;
+      isPrimary?: boolean;
+    }
+  ) {
+    if (!memberOrganization) return;
+
+    setMemberSavingId(membershipId);
+    setMemberError("");
+
+    try {
+      const response = await fetch(
+        "/api/admin/operational-network/members",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            membershipId,
+            ...patch,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "No se pudo actualizar el miembro."
+        );
+      }
+
+      await Promise.all([
+        loadMembers(memberOrganization.id),
+        load(),
+      ]);
+    } catch (err) {
+      setMemberError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo actualizar el miembro."
+      );
+    } finally {
+      setMemberSavingId(null);
+    }
   }
 
   async function saveOrganization(
@@ -519,19 +739,37 @@ export default function OperationalNetworkPanel() {
                               )}
                             </div>
 
-                            {canEdit && (
+                            <div className="mt-4 grid grid-cols-2 gap-2">
                               <button
                                 type="button"
                                 onClick={() =>
-                                  editOrganization(
+                                  openMembers(
                                     organization
                                   )
                                 }
-                                className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+                                className="rounded-xl border border-cyan-800 bg-cyan-950/30 px-3 py-2 text-xs font-black text-cyan-200 hover:bg-cyan-900/40"
                               >
-                                Administrar
+                                👥 Miembros
                               </button>
-                            )}
+
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    editOrganization(
+                                      organization
+                                    )
+                                  }
+                                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-800"
+                                >
+                                  ⚙️ Administrar
+                                </button>
+                              ) : (
+                                <div className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-center text-xs font-bold text-slate-600">
+                                  Solo consulta
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       }
@@ -546,6 +784,329 @@ export default function OperationalNetworkPanel() {
                 Tu perfil puede consultar la Red Operativa,
                 pero la creación o modificación de organismos
                 está reservada a administradores del Centro.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {membersOpen && memberOrganization && (
+        <div
+          className="fixed inset-0 z-[115000] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-4"
+          onClick={closeMembers}
+        >
+          <div
+            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-cyan-800/60 bg-slate-950 p-4 shadow-2xl sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-cyan-300">
+                  Miembros del organismo
+                </p>
+                <h3 className="mt-1 text-2xl font-black">
+                  {TYPE_ICONS[memberOrganization.type] || "🏢"}{" "}
+                  {memberOrganization.name}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Cada persona usa su cuenta habitual del Centro,
+                  pero dentro de la Red Operativa tiene un rol propio.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeMembers}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            {memberError && (
+              <div className="mt-4 rounded-2xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+                {memberError}
+              </div>
+            )}
+
+            {memberCanEdit && (
+              <div className="mt-5 rounded-3xl border border-cyan-800/40 bg-cyan-950/15 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-black text-cyan-100">
+                      + Agregar usuario existente
+                    </h4>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      El usuario debe existir en “Usuarios” y tener jurisdicción
+                      compatible con esta Red Operativa.
+                    </p>
+                  </div>
+
+                  <a
+                    href="/admin/usuarios"
+                    className="shrink-0 rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800"
+                  >
+                    👤 Usuarios
+                  </a>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm font-bold">
+                    Usuario
+                    <select
+                      value={newMemberUserId}
+                      onChange={(event) =>
+                        setNewMemberUserId(
+                          event.target.value
+                            ? Number(event.target.value)
+                            : ""
+                        )
+                      }
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-normal outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Seleccionar usuario</option>
+                      {eligibleUsers
+                        .filter(
+                          (user) =>
+                            !members.some(
+                              (membership) =>
+                                membership.user.id === user.id &&
+                                membership.active
+                            )
+                        )
+                        .map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.name} · @{user.username}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+
+                  <label className="text-sm font-bold">
+                    Rol operativo
+                    <select
+                      value={newMemberRole}
+                      onChange={(event) =>
+                        setNewMemberRole(event.target.value)
+                      }
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-normal outline-none focus:border-cyan-500"
+                    >
+                      {Object.entries(MEMBER_ROLE_LABELS).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        )
+                      )}
+                    </select>
+                  </label>
+                </div>
+
+                <label className="mt-3 flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+                  <input
+                    type="checkbox"
+                    checked={newMemberPrimary}
+                    onChange={(event) =>
+                      setNewMemberPrimary(event.target.checked)
+                    }
+                    className="mt-1 h-4 w-4"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold">
+                      Organismo principal de este usuario
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Sirve para decidir qué institución representa por defecto
+                      cuando entre a la Red Operativa.
+                    </span>
+                  </span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void addMember()}
+                  disabled={
+                    memberSavingId !== null ||
+                    newMemberUserId === ""
+                  }
+                  className="mt-4 w-full rounded-2xl bg-cyan-600 py-3 text-sm font-black text-white hover:bg-cyan-500 disabled:opacity-40"
+                >
+                  {memberSavingId === -1
+                    ? "AGREGANDO…"
+                    : "AGREGAR AL ORGANISMO"}
+                </button>
+
+                {!membersLoading &&
+                  eligibleUsers.filter(
+                    (user) =>
+                      !members.some(
+                        (membership) =>
+                          membership.user.id === user.id &&
+                          membership.active
+                      )
+                  ).length === 0 && (
+                    <p className="mt-3 rounded-xl border border-amber-800/50 bg-amber-950/20 p-3 text-xs leading-5 text-amber-200">
+                      No hay otros usuarios activos disponibles en esta
+                      jurisdicción. Si necesitás uno nuevo, crealo primero
+                      desde “Usuarios”.
+                    </p>
+                  )}
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-black">
+                  Miembros ({members.filter((member) => member.active).length})
+                </h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  Los cambios quedan asociados a la persona y al organismo.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void loadMembers(memberOrganization.id)
+                }
+                disabled={membersLoading}
+                className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-50"
+              >
+                ↻ Actualizar
+              </button>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {membersLoading && (
+                <div className="rounded-2xl bg-slate-900 p-5 text-sm text-slate-500">
+                  Cargando miembros…
+                </div>
+              )}
+
+              {!membersLoading && members.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-6 text-center">
+                  <p className="text-3xl">👥</p>
+                  <p className="mt-2 font-bold text-slate-300">
+                    Este organismo todavía no tiene usuarios vinculados.
+                  </p>
+                </div>
+              )}
+
+              {!membersLoading &&
+                members.map((membership) => (
+                  <div
+                    key={membership.id}
+                    className={`rounded-2xl border p-4 ${
+                      membership.active
+                        ? "border-slate-700 bg-slate-900"
+                        : "border-slate-800 bg-slate-900/40 opacity-60"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-black text-white">
+                            {membership.user.name}
+                          </p>
+
+                          {membership.isPrimary && (
+                            <span className="rounded-full border border-violet-700/50 bg-violet-950/40 px-2 py-1 text-[10px] font-black uppercase text-violet-300">
+                              Principal
+                            </span>
+                          )}
+
+                          <span
+                            className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${
+                              membership.active
+                                ? "bg-emerald-950 text-emerald-300"
+                                : "bg-slate-800 text-slate-500"
+                            }`}
+                          >
+                            {membership.active ? "Activo" : "Inactivo"}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          @{membership.user.username} · Cuenta:{" "}
+                          {membership.user.role}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 text-xs font-bold text-cyan-300">
+                        {MEMBER_ROLE_LABELS[membership.role] ||
+                          membership.role}
+                      </div>
+                    </div>
+
+                    {memberCanEdit && (
+                      <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                        <select
+                          value={membership.role}
+                          disabled={memberSavingId === membership.id}
+                          onChange={(event) =>
+                            void updateMember(membership.id, {
+                              role: event.target.value,
+                            })
+                          }
+                          className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold outline-none focus:border-cyan-500 disabled:opacity-50"
+                        >
+                          {Object.entries(MEMBER_ROLE_LABELS).map(
+                            ([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            )
+                          )}
+                        </select>
+
+                        <button
+                          type="button"
+                          disabled={
+                            memberSavingId === membership.id ||
+                            !membership.active
+                          }
+                          onClick={() =>
+                            void updateMember(membership.id, {
+                              isPrimary: !membership.isPrimary,
+                            })
+                          }
+                          className="rounded-xl border border-violet-800 px-3 py-2 text-xs font-black text-violet-300 disabled:opacity-40"
+                        >
+                          {membership.isPrimary
+                            ? "★ Principal"
+                            : "☆ Hacer principal"}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={memberSavingId === membership.id}
+                          onClick={() =>
+                            void updateMember(membership.id, {
+                              active: !membership.active,
+                            })
+                          }
+                          className={`rounded-xl border px-3 py-2 text-xs font-black disabled:opacity-40 ${
+                            membership.active
+                              ? "border-red-800 text-red-300"
+                              : "border-emerald-800 text-emerald-300"
+                          }`}
+                        >
+                          {memberSavingId === membership.id
+                            ? "Guardando…"
+                            : membership.active
+                            ? "Desactivar"
+                            : "Reactivar"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+
+            {!memberCanEdit && (
+              <p className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-3 text-xs leading-5 text-slate-500">
+                Tu perfil puede consultar los miembros de este organismo,
+                pero no modificar sus roles ni membresías.
               </p>
             )}
           </div>
