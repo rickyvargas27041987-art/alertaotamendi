@@ -6,6 +6,7 @@ import PersonPatternAlerts from "../components/PersonPatternAlerts";
 import OperationalStatistics from "../components/OperationalStatistics";
 import OperationalAccessPanel from "../components/OperationalAccessPanel";
 import AppUserStatistics from "../components/AppUserStatistics";
+import WeatherAlertsPanel from "../components/WeatherAlertsPanel";
 
 const MapaAlertas = dynamic(() => import("../components/MapaAlertas"), {
   ssr: false,
@@ -1074,6 +1075,7 @@ const [aiError, setAiError] = useState<string | null>(null);
           </div>
 
           <aside className="min-w-0 space-y-3">
+            <WeatherAlertsPanel />
             <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
