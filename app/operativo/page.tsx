@@ -529,18 +529,6 @@ export default function OperationalPage() {
               <label className="block text-sm font-semibold">Nombre y apellido
                 <input value={officerName} onChange={(event) => setOfficerName(event.target.value)} maxLength={100} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 outline-none focus:border-cyan-500" required />
               </label>
-              <label className="block text-sm font-semibold">Dependencia o institución
-                <input value={agency} onChange={(event) => setAgency(event.target.value)} maxLength={120} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 outline-none focus:border-cyan-500" placeholder="Ej.: Comisaría local" required />
-              </label>
-              <label className="block text-sm font-semibold">Servicio
-                <select value={serviceType} onChange={(event) => setServiceType(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">
-                  <option value="POLICE">Policía</option>
-                  <option value="FIRE">Bomberos</option>
-                  <option value="MEDICAL">Emergencias médicas</option>
-                  <option value="CIVIL_DEFENSE">Defensa Civil</option>
-                  <option value="MUNICIPAL">Centro / Municipio</option>
-                </select>
-              </label>
               {error && <div className="rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">{error}</div>}
               <button disabled={busy || code.length !== 6} className="w-full rounded-2xl bg-cyan-600 py-4 font-black hover:bg-cyan-500 disabled:opacity-40">{busy ? "VERIFICANDO…" : "INGRESAR DE FORMA SEGURA"}</button>
             </form>
